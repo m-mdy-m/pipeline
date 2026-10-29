@@ -32,3 +32,8 @@ python scripts/providers/gitlab/adapter.py run check --json
 ~~~
 
 Tests in \`tests/test_pipeline_core.py\` cover context isolation, provider mappings, graph validation, execution order, failure/timeout semantics, CLI end-to-end execution and artifact integrity.
+
+
+## Provider adapter end-to-end acceptance
+
+The unit suite runs the same generated task graph through executable Local, GitHub and GitLab adapters. It verifies that each runs dependency tasks in order, propagates the portable workspace/provider context, emits the same versioned JSON report contract and records the correct provider. Repository CI also executes the committed \`pipeline.toml\` task graph through the GitHub adapter rather than invoking task logic directly.
