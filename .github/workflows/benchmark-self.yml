@@ -7,11 +7,17 @@ on:
       - "Makefile"
       - "README.md"
       - "CHANGELOG.md"
+      - "pipeline.toml"
+      - "scripts/pipeline.py"
+      - "scripts/pipeline_core/**"
+      - "scripts/providers/**"
+      - "tests/**"
       - "docs/**"
       - ".github/workflows/benchmark.yml"
       - ".github/workflows/benchmark-self.yml"
       - ".github/workflows/ci-main.yml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/source-release.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,12 +25,12 @@ permissions:
 
 jobs:
   validation-runtime:
-    name: Repeated repository validation timing
+    name: Repeated shared-pipeline check timing
     uses: ./.github/workflows/benchmark.yml
     with:
       category: startup
       repetitions: 5
-      benchmark-command: make check
+      benchmark-command: python scripts/providers/github/adapter.py task check --json
 
   catalog-size:
     name: Tracked source and workflow size
