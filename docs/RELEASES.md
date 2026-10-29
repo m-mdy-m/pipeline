@@ -7,9 +7,9 @@ The reusable release workflow is .github/workflows/release.yml. It is based on t
 1. Run the caller workflow on a tag that matches vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-(alpha|beta|rc).N.
 2. For a stable tag, CHANGELOG.md must contain a matching heading such as ## [1.2.0]. A stable release without the matching section is rejected.
 3. Every build-matrix entry runs tests before the build and must upload at least one artifact. One failed target blocks the release.
-4. The publish job collects each target's artifacts without flattening them into a shared directory, generates SHA256SUMS, and attaches release notes plus all assets to GitHub Releases.
+4. The assemble job collects each target's artifacts without flattening them into a shared directory, generates SHA256SUMS, and uploads a release bundle. The publish job then attaches the release notes and bundle assets to GitHub Releases.
 5. Prerelease tags are marked prerelease and cannot become GitHub's latest stable release.
-6. Set dry-run: true to exercise tag/changelog preparation, tests, builds, artifact upload, and note generation without publishing. The repository's github-release-smoke.yml invokes this on catalog changes.
+6. Set dry-run: true to exercise tag/changelog preparation, tests, builds, artifact upload, checksum generation, and release-bundle assembly without publishing. Only the final GitHub Release publishing job is skipped. The repository's github-release-smoke.yml invokes this on catalog changes.
 
 ## Example caller
 
