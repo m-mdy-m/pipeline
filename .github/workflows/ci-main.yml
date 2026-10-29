@@ -16,7 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
       - name: Check required files and workflow inventory
-        run: make check
+        run: make docs-check workflow-inventory
+      - name: Execute shared task graph through GitHub provider adapter
+        run: python scripts/providers/github/adapter.py run check --json --result .pipeline-artifacts/pipeline-result.json
       - name: Check whitespace
         run: git diff --check

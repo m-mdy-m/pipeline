@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json,sys,tempfile,unittest
+import json,os,subprocess,sys,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];SCRIPTS=ROOT/"scripts";sys.path.insert(0,str(SCRIPTS))
 from pipeline_core.artifacts import LocalArtifactStore
@@ -45,6 +45,61 @@ class ProviderTests(unittest.TestCase):
                 content=path.read_text(encoding="utf-8")
                 with self.subTest(path=path.name):
                     self.assertNotIn("GITHUB_",content);self.assertNotIn("GITLAB_",content);self.assertNotIn("::warning title=",content)
+
+class AdapterExecutionTests(unittest.TestCase):
+    """The same task graph must run through the three provider entrypoints."""
+    def test_same_task_graph_executes_through_local_github_and_gitlab(self):
+        cases = {
+            "local": {},
+            "github": {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main",
+                       "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "example/project"},
+            "gitlab": {"CI_PIPELINE_SOURCE": "push", "CI_COMMIT_BRANCH": "main",
+                       "CI_COMMIT_REF_NAME": "main", "CI_COMMIT_SHA": "b" * 40,
+                       "CI_PROJECT_PATH": "example/project", "GITHUB_SHA": "must-not-win"},
+        }
+        entrypoints = {
+            "local": SCRIPTS / "providers" / "local" / "adapter.py",
+            "github": SCRIPTS / "providers" / "github" / "adapter.py",
+            "gitlab": SCRIPTS / "providers" / "gitlab" / "adapter.py",
+        }
+        for provider, values in cases.items():
+            with self.subTest(provider=provider), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                config_text = f"""
+[tasks.prepare]
+command = ["python", "-c", "from pathlib import Path; Path('marker.txt').write_text('ok')"]
+
+[tasks.verify]
+command = ["python", "-c", "import os; from pathlib import Path; assert Path('marker.txt').read_text() == 'ok'; assert os.environ['PIPELINE_PROVIDER'] == '{provider}'; assert os.environ['PIPELINE_WORKSPACE'] == str(Path.cwd())"]
+depends_on = ["prepare"]
+"""
+                config = write_config(root, config_text)
+                report_path = root / "run-report.json"
+                child_env = {key: value for key, value in os.environ.items() if not key.startswith("PIPELINE_")}
+                child_env["PWD"] = str(root)
+                child_env.update(values)
+                if provider == "local":
+                    child_env["PIPELINE_WORKSPACE"] = str(root)
+                elif provider == "github":
+                    child_env["GITHUB_WORKSPACE"] = str(root)
+                else:
+                    child_env["CI_PROJECT_DIR"] = str(root)
+
+                command = [sys.executable, str(entrypoints[provider])]
+                if provider == "github":
+                    command += ["run", "verify"]
+                else:
+                    command += ["run", "verify"]
+                command += ["--root", str(root), "--config", str(config),
+                            "--result", str(report_path), "--json"]
+                completed = subprocess.run(command, cwd=ROOT, env=child_env, capture_output=True, text=True, check=False)
+                self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                self.assertTrue(report["succeeded"], report)
+                self.assertEqual(report["provider"], provider)
+                self.assertEqual([item["name"] for item in report["tasks"]], ["prepare", "verify"])
+                self.assertTrue((root / "marker.txt").is_file())
+
 class ConfigTests(unittest.TestCase):
     def test_config_plans_dependencies_in_order(self):
         with tempfile.TemporaryDirectory() as tmp:

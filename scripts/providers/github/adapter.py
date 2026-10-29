@@ -6,6 +6,7 @@ from typing import Mapping
 SCRIPTS_ROOT=Path(__file__).resolve().parents[2]
 if str(SCRIPTS_ROOT) not in sys.path:sys.path.insert(0,str(SCRIPTS_ROOT))
 from pipeline_core.provider import ProviderAdapter  # noqa: E402
+from pipeline_core.cli import main as core_main  # noqa: E402
 
 def _ref_parts(source:Mapping[str,str])->tuple[str,str]:
     kind=source.get("GITHUB_REF_TYPE","");name=source.get("GITHUB_REF_NAME","");ref=source.get("GITHUB_REF","")
@@ -50,11 +51,19 @@ class GitHubAdapter:
         with target.open("a",encoding="utf-8",newline="\n") as stream:stream.write("\n".join(lines)+"\n")
 def main(argv:list[str]|None=None)->int:
     args=list(sys.argv[1:] if argv is None else argv)
-    if not args or args[0]!="bootstrap":
-        print("Usage: python scripts/providers/github/adapter.py bootstrap",file=sys.stderr);return 2
+    if not args:
+        print("Usage: python scripts/providers/github/adapter.py bootstrap|run [pipeline args...]",file=sys.stderr);return 2
+    adapter=GitHubAdapter()
+    if args[0]=="run":
+        if len(args)<2:
+            print("Usage: python scripts/providers/github/adapter.py run TASK [TASK ...]",file=sys.stderr);return 2
+        os.environ.update(adapter.normalize_environment(os.environ))
+        return core_main(args[1:])
+    if args[0]!="bootstrap":
+        print("Usage: python scripts/providers/github/adapter.py bootstrap|run [pipeline args...]",file=sys.stderr);return 2
     path=os.environ.get("GITHUB_ENV","")
     if not path:print("GITHUB_ENV is required for bootstrap mode",file=sys.stderr);return 2
-    try:GitHubAdapter.write_environment_file(path,GitHubAdapter().bootstrap_values(os.environ))
+    try:GitHubAdapter.write_environment_file(path,adapter.bootstrap_values(os.environ))
     except (OSError,ValueError) as exc:print(f"GitHub adapter failed: {exc}",file=sys.stderr);return 1
     print("GitHub provider context exported as PIPELINE_* variables.");return 0
 if __name__=="__main__":raise SystemExit(main())
