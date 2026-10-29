@@ -3,7 +3,7 @@
 Configure registry credentials in GitHub Actions settings or organization secrets. Never commit tokens or include them in workflow YAML.
 
 | Reusable workflow secret input | Map from caller secret | Purpose |
-| --- | --- |---|
+| --- | --- | --- |
 | release-token (optional) | RELEASE_TOKEN (optional) | Release creation; otherwise the caller's GITHUB_TOKEN is used |
 | username | DOCKERHUB_USERNAME | Docker Hub login |
 | token | DOCKERHUB_TOKEN | Docker Hub access token |
