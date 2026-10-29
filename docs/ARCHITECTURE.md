@@ -28,6 +28,7 @@ python scripts/pipeline.py validate
 python scripts/pipeline.py list --json
 python scripts/pipeline.py run check --json --result .pipeline-artifacts/pipeline-result.json
 python scripts/providers/local/adapter.py run check --json
+python scripts/providers/github/adapter.py task check --json
 python scripts/providers/gitlab/adapter.py run check --json
 ~~~
 

@@ -54,13 +54,18 @@ def main(argv:list[str]|None=None)->int:
     if not args:
         print("Usage: python scripts/providers/github/adapter.py bootstrap|run [pipeline args...]",file=sys.stderr);return 2
     adapter=GitHubAdapter()
+    if args[0]=="task":
+        if len(args)<2:
+            print("Usage: python scripts/providers/github/adapter.py task TASK [TASK ...]",file=sys.stderr);return 2
+        os.environ.update(adapter.normalize_environment(os.environ))
+        return core_main(["run",*args[1:]])
     if args[0]=="run":
         if len(args)<2:
-            print("Usage: python scripts/providers/github/adapter.py run TASK [TASK ...]",file=sys.stderr);return 2
+            print("Usage: python scripts/providers/github/adapter.py run CORE_COMMAND [args...]",file=sys.stderr);return 2
         os.environ.update(adapter.normalize_environment(os.environ))
         return core_main(args[1:])
     if args[0]!="bootstrap":
-        print("Usage: python scripts/providers/github/adapter.py bootstrap|run [pipeline args...]",file=sys.stderr);return 2
+        print("Usage: python scripts/providers/github/adapter.py bootstrap|task|run [args...]",file=sys.stderr);return 2
     path=os.environ.get("GITHUB_ENV","")
     if not path:print("GITHUB_ENV is required for bootstrap mode",file=sys.stderr);return 2
     try:GitHubAdapter.write_environment_file(path,adapter.bootstrap_values(os.environ))
