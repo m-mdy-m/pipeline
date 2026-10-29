@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p benchmark-results
-          printf 'category,iteration,started_utc,duration_ms,exit_code\\n' > benchmark-results/iterations.csv
+          printf 'category,iteration,started_utc,duration_ms,exit_code\n' > benchmark-results/iterations.csv
           : > benchmark-results/durations.txt
 
           i=1
@@ -77,8 +77,8 @@ jobs:
             set -e
             end_ns="$(date +%s%N)"
             duration_ms=$(((end_ns - start_ns) / 1000000))
-            printf '%s,%s,%s,%s,%s\\n' "$CATEGORY" "$i" "$started" "$duration_ms" "$code" >> benchmark-results/iterations.csv
-            printf '%s\\n' "$duration_ms" >> benchmark-results/durations.txt
+            printf '%s,%s,%s,%s,%s\n' "$CATEGORY" "$i" "$started" "$duration_ms" "$code" >> benchmark-results/iterations.csv
+            printf '%s\n' "$duration_ms" >> benchmark-results/durations.txt
             [ "$code" -eq 0 ] || exit "$code"
             i=$((i + 1))
           done
@@ -89,7 +89,7 @@ jobs:
           maximum="$(tail -n 1 benchmark-results/durations.sorted.txt)"
           median="$(awk -v n="$count" 'NR == int((n + 1) / 2) { a = $1 } NR == int((n + 2) / 2) { b = $1 } END { printf "%.2f", (a + b) / 2 }' benchmark-results/durations.sorted.txt)"
           mean="$(awk -F, 'NR > 1 { sum += $4; n++ } END { if (n) printf "%.2f", sum / n; else print "0" }' benchmark-results/iterations.csv)"
-          printf 'category,runs,min_ms,median_ms,mean_ms,max_ms\\n%s,%s,%s,%s,%s,%s\\n' "$CATEGORY" "$count" "$minimum" "$median" "$mean" "$maximum" > benchmark-results/summary.csv
+          printf 'category,runs,min_ms,median_ms,mean_ms,max_ms\n%s,%s,%s,%s,%s,%s\n' "$CATEGORY" "$count" "$minimum" "$median" "$mean" "$maximum" > benchmark-results/summary.csv
           uname -a > benchmark-results/environment.txt
           lscpu >> benchmark-results/environment.txt || true
           free -h >> benchmark-results/environment.txt || true
