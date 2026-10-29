@@ -1,0 +1,21 @@
+schema_version = 1
+[project]
+name = "pipeline"
+description = "Provider-neutral automation tasks for this repository"
+[defaults]
+timeout_seconds = 300
+fail_fast = true
+[tasks.validate]
+description = "Compile the core, providers and release modules"
+command = ["python","-m","compileall","-q","scripts/pipeline_core","scripts/pipeline_release","scripts/providers","scripts/source_release.py","scripts/tools"]
+timeout_seconds = 120
+[tasks.test]
+description = "Run unit, provider-contract and integration tests"
+command = ["python","-m","unittest","discover","-s","tests","-p","test_*.py","-v"]
+depends_on = ["validate"]
+timeout_seconds = 300
+[tasks.check]
+description = "Run the full configured local verification sequence"
+command = ["python","-c","print('Pipeline checks completed successfully')"]
+depends_on = ["test"]
+timeout_seconds = 30

@@ -1,0 +1,13 @@
+stages:
+  - verify
+default:
+  image: python:3.12
+pipeline:check:
+  stage: verify
+  script:
+    - python scripts/providers/gitlab/adapter.py run check --json --result .pipeline-artifacts/pipeline-result.json
+  artifacts:
+    when: always
+    paths:
+      - .pipeline-artifacts/
+    expire_in: 7 days

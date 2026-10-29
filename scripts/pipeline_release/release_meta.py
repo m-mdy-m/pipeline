@@ -3,14 +3,16 @@ import re
 from .errors import ReleaseError
 from .runtime import REPO_ROOT, TAG_RE
 from .tools import env, git_output
+from pipeline_core.context import PipelineContext
 
 
 def validate_tag_and_version() -> tuple[str, str, str, bool, str]:
     dry_run = env("SOURCE_DRY_RUN", "false").lower() == "true"
-    ref_type = env("GITHUB_REF_TYPE")
-    ref_name = env("GITHUB_REF_NAME")
-    sha = env("GITHUB_SHA") or git_output(["rev-parse", "HEAD"])
-    repo = env("GITHUB_REPOSITORY", "local/project")
+    context = PipelineContext.from_environment(workspace=REPO_ROOT)
+    ref_type = context.ref_type
+    ref_name = context.ref_name
+    sha = context.sha or git_output(["rev-parse", "HEAD"])
+    repo = context.repository or env("SOURCE_REPOSITORY", "local/project")
     repository = repo.rsplit("/", 1)[-1]
 
     if ref_type == "tag":

@@ -1,0 +1,1 @@
+"""GitLab CI provider adapter."""

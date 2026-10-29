@@ -138,6 +138,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Normalize GitHub context for the provider-neutral core
+        shell: bash
+        env:
+          SOURCE_SUBMODULE_TOKEN: ${{ secrets.submodule-token }}
+          SOURCE_SUBMODULE_MODE: ${{ inputs.source-submodules }}
+        run: python .pipeline/scripts/providers/github/adapter.py bootstrap
+
+
       - name: Verify native log.c logger initialization
         shell: bash
         run: |
@@ -160,7 +168,6 @@ jobs:
           SOURCE_SENSITIVE_PATH_PATTERNS: ${{ inputs.source-sensitive-path-patterns }}
           SOURCE_SENSITIVE_ALLOWLIST_PATTERNS: ${{ inputs.source-sensitive-allowlist-patterns }}
           SOURCE_GITLEAKS_ALLOWLIST_PATH: ${{ inputs.source-gitleaks-allowlist-path }}
-          SOURCE_SUBMODULE_TOKEN: ${{ secrets.submodule-token }}
         run: python .pipeline/scripts/source_release.py prepare
 
       - name: Scan the actual published source with Gitleaks

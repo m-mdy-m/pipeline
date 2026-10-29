@@ -136,3 +136,8 @@ The verifier checks asset checksums, the manifest archive hash, ZIP CRC, member 
 ### Adding new components
 
 Put reusable operations in a focused module under `scripts/pipeline_release/`; use `prepare.py`, `package.py` and `cli.py` for orchestration. Shared command and filesystem operations belong in `tools.py`, not copied into every script. Keep `scripts/source_release.py` as the stable compatibility entry point, add tests under `tests/`, and run `make check`.
+
+
+## Provider adapter boundary
+
+Source Release business logic consumes only the portable \`PIPELINE_*\` context and output-file variables. The GitHub adapter maps Actions metadata and \`GITHUB_OUTPUT\`, and it alone configures GitHub submodule authentication. Local and GitLab runs use their respective adapters or explicitly supplied \`PIPELINE_*\` values.
