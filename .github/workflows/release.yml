@@ -173,13 +173,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  publish:
-    name: Publish GitHub Release and attach assets
+  assemble:
+    name: Assemble artifacts and verify checksums
     needs: [prepare, build]
-    if: inputs.dry-run != true
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/download-artifact@v7
         with:
@@ -205,6 +204,28 @@ jobs:
           )
           test -s release-assets/SHA256SUMS
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-bundle
+          path: |
+            release-assets/
+            release-notes/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub Release and attach assets
+    needs: [prepare, build, assemble]
+    if: inputs.dry-run != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-bundle
+          path: .
+
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
@@ -213,7 +234,6 @@ jobs:
           body_path: release-notes/release-notes.md
           files: |
             release-assets/**/*
-            release-assets/SHA256SUMS
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}
           token: ${{ secrets.release-token || github.token }}
