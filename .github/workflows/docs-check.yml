@@ -22,13 +22,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Check common project documents and repository contracts
-        shell: bash
-        run: |
-          test -s README.md
-          test -s LICENSE
-          test -s CHANGELOG.md
-          test -s docs/SOURCE-RELEASES.md
-          test -s docs/SOURCE-RELEASE-DECISIONS.md
-          make check
-          git diff --check
+      - name: Check required documents and workflow inventory
+        run: make docs-check workflow-inventory
+      - name: Validate the shared task list
+        run: python scripts/pipeline.py validate --json
+      - name: Check whitespace
+        run: git diff --check
