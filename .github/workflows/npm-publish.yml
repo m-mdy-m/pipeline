@@ -1,0 +1,51 @@
+name: npm Publish
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      node-version:
+        required: false
+        type: string
+        default: "22"
+      registry-url:
+        required: false
+        type: string
+        default: "https://registry.npmjs.org"
+    secrets:
+      npm-token:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: ${{ inputs.registry-url }}
+      - name: Install, test, and build
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          npm ci
+          npm test --if-present
+          npm run build --if-present
+          npm pack --dry-run
+      - name: Publish stable or prerelease
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.npm-token }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            npm publish --access public --tag next
+          else
+            npm publish --access public
+          fi
