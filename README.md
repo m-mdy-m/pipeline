@@ -3,24 +3,58 @@
 [![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg)](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml)
 [![License](https://img.shields.io/github/license/m-mdy-m/pipeline)](LICENSE)
 
-**pipeline** is a provider-neutral automation core with CI-provider adapters for local execution, GitHub Actions and GitLab CI. The core describes and runs tasks, validates dependencies, and collects artifacts; provider wrappers translate runner variables, outputs, uploads and publishing into platform-specific operations.
+**pipeline** helps you run the same project tasks in a consistent way. You can use it on your computer, in GitHub Actions, or in GitLab CI.
 
-The goal is to keep task logic independent of any single CI platform. GitHub Actions is one provider—not the source of truth for the task graph.
+You do not need to know CI/CD to get started. Think of pipeline as a list of named tasks—such as checking the code, running tests, or preparing files—and a small runner that executes those tasks in the right order.
 
-## Features
+## How it works
 
-- **CI:** configure build, test, and optional lint commands for Go, Node.js, Rust, Python, C, or custom projects.
-- **Build Releases:** validate version tags, run tests and matrix builds, collect artifacts, generate SHA-256 checksums, and publish a release.
-- **Source Releases:** package the exact Git-tag snapshot into a configurable source ZIP, validate changelog/version rules, scan published content with Gitleaks, and generate a manifest plus checksums.
-- **Benchmarks:** repeat a command, retain per-run logs, capture runner details, and export min/median/mean/max timing summaries.
-- **Publishing:** reusable workflows for Docker Hub, npm, and GitHub Pages.
-- **Validation:** Markdown lint, GitHub Actions syntax/expression lint, and a repository workflow inventory check.
+There are three main parts:
 
-## Quick start
+1. **Task list — `pipeline.toml`**  
+   This file says which tasks exist, what each task does, and which tasks must run first.
+2. **Core — `scripts/pipeline_core/`**  
+   The core reads the task list, checks it, runs commands, and records results. It does not depend on GitHub or GitLab.
+3. **Provider adapters — `scripts/providers/`**  
+   An adapter translates information from your computer or CI service into the format the core understands.
 
-Create a workflow in the consuming project, for example `.github/workflows/ci.yml`:
+GitHub Actions workflows still handle GitHub-specific jobs such as uploading artifacts and publishing GitHub Releases. They call the shared core for tasks instead of defining a second copy of the task graph.
 
-~~~yaml
+## Try it locally
+
+You need Python 3.12 or newer. From the repository root, run:
+
+```sh
+python scripts/pipeline.py validate
+python scripts/pipeline.py list
+python scripts/pipeline.py run check
+```
+
+- `validate` checks the task configuration before anything runs.
+- `list` shows the tasks that are available.
+- `run check` runs the task named `check` and its required tasks first.
+
+To save a machine-readable result report:
+
+```sh
+python scripts/pipeline.py run check --json --result .pipeline-artifacts/pipeline-result.json
+```
+
+You can also run through an adapter:
+
+```sh
+python scripts/providers/local/adapter.py run check --json
+python scripts/providers/github/adapter.py task check --json
+python scripts/providers/gitlab/adapter.py run check --json
+```
+
+The GitHub and GitLab adapters can be tested locally with suitable environment variables, but a local test is not the same as running on a hosted GitLab runner.
+
+## Use pipeline in your own project
+
+You can start by using the reusable GitHub Actions workflow. Create `.github/workflows/ci.yml` in your project:
+
+```yaml
 name: CI
 
 on:
@@ -32,159 +66,59 @@ permissions:
   contents: read
 
 jobs:
-  quality:
+  checks:
     uses: m-mdy-m/pipeline/.github/workflows/ci.yml@main
     with:
-      language: go
-      build-command: go build ./...
-      test-command: go test ./...
-      lint-command: go vet ./...
-~~~
+      language: python
+      build-command: python -m compileall -q .
+      test-command: python -m unittest discover -s tests
+```
 
-The supported `language` values are `go`, `node`, `rust`, `python`, `c`, and `custom`. Go, Node.js, Rust, and Python toolchain setup is provided; C and custom projects can prepare their own toolchain in the caller workflow.
+Change the language and commands to match your project. Supported language values are `go`, `node`, `rust`, `python`, `c`, and `custom`. For production use, pin the workflow to a reviewed version tag or commit SHA rather than a moving branch.
 
-For production repositories, pin the reusable workflow to a reviewed commit SHA or a version tag instead of relying on a moving `@main` reference.
+## Workflows you can reuse
 
-## Available workflows
-
-| Workflow | Purpose |
+| Workflow | What it does |
 | --- | --- |
-| [`ci.yml`](.github/workflows/ci.yml) | Build, test, and optional lint |
-| [`release.yml`](.github/workflows/release.yml) | Tag and changelog validation, matrix builds, checksums, and GitHub Releases |
-| [`source-release.yml`](.github/workflows/source-release.yml) | Source-only ZIP, changelog policy, secret/path checks, manifest, and checksums |
-| [`benchmark.yml`](.github/workflows/benchmark.yml) | Repeated commands and timing artifacts |
-| [`docker-publish.yml`](.github/workflows/docker-publish.yml) | Multi-architecture Docker Hub publishing |
-| [`npm-publish.yml`](.github/workflows/npm-publish.yml) | npm package validation and publication |
-| [`pages.yml`](.github/workflows/pages.yml) | Static-site build and GitHub Pages deployment |
-| [`docs-check.yml`](.github/workflows/docs-check.yml) | Markdown and workflow validation |
+| [CI](.github/workflows/ci.yml) | Runs your build, tests, and optional lint command |
+| [Build release](.github/workflows/release.yml) | Builds release files for one or more targets, checks the changelog, and publishes a GitHub Release |
+| [Source release](.github/workflows/source-release.yml) | Checks and packages a source ZIP without compiling the project |
+| [Benchmark](.github/workflows/benchmark.yml) | Runs a command several times and saves timing results and logs |
+| [Docker Hub](.github/workflows/docker-publish.yml) | Builds and publishes a multi-architecture Docker image |
+| [npm](.github/workflows/npm-publish.yml) | Tests and publishes an npm package |
+| [GitHub Pages](.github/workflows/pages.yml) | Builds and deploys a static website |
+| [Documentation checks](.github/workflows/docs-check.yml) | Checks Markdown and GitHub Actions workflow syntax |
 
-All entries above are reusable workflows. Repository-specific test and smoke workflows are kept separate so they do not accidentally publish packages, containers, or a public release.
+These are reusable GitHub Actions workflows: your project calls them from its own workflow. The repository also has separate smoke-test workflows that check release preparation without publishing a public release.
 
-## Provider-neutral execution
+## Repository map
 
-Tasks are declared in \`pipeline.toml\`, using dependency graphs and argument-array commands. Run the same core locally:
+```text
+pipeline.toml                 Shared task list
+scripts/pipeline.py           Simple command-line entry point
+scripts/pipeline_core/        Provider-neutral task runner
+scripts/providers/local/      Local adapter
+scripts/providers/github/     GitHub Actions adapter
+scripts/providers/gitlab/     GitLab CI adapter
+scripts/pipeline_release/     Shared source-release helper code
+.github/workflows/            GitHub-specific automation and reusable workflows
+.gitlab-ci.yml                Example GitLab CI configuration
+tests/                        Automated tests
+docs/                         Guides and workflow details
+```
 
-~~~sh
-python scripts/pipeline.py validate
-python scripts/pipeline.py list --json
-python scripts/pipeline.py run check --json --result .pipeline-artifacts/pipeline-result.json
-~~~
+## Read next
 
-Provider adapters normalize runner variables before invoking the core:
+- [Architecture](docs/ARCHITECTURE.md) — how the parts fit together.
+- [Workflow guide](docs/WORKFLOWS.md) — choose the workflow for your project.
+- [Secrets and permissions](docs/SECRETS.md) — how to handle publishing credentials.
+- [Benchmarks](docs/BENCHMARKS.md) — understand benchmark output.
+- [Build releases](docs/RELEASES.md) — publish compiled or built files.
+- [Source releases](docs/SOURCE-RELEASES.md) — publish a source ZIP safely.
+- [Source-release design notes](docs/SOURCE-RELEASE-DECISIONS.md) — why the source archive follows these rules.
 
-~~~sh
-python scripts/providers/local/adapter.py run check --json
-python scripts/providers/gitlab/adapter.py run check --json
-~~~
+## Project status
 
-The reusable workflows under \`.github/workflows/\` are GitHub-side wrappers. \`.gitlab-ci.yml\` is an example for the same task graph on GitLab. See [Architecture](docs/ARCHITECTURE.md).
+The shared task runner and local/GitHub/GitLab adapters have automated tests. The GitHub Actions workflows are exercised by this repository's CI. The GitLab configuration is an example and has not yet been verified on an actual GitLab-hosted runner.
 
-## GitHub Release example
-
-The release workflow follows the useful pattern from [`cdin-editor/kernel`](https://github.com/cdin-editor/kernel/blob/main/.github/workflows/release.yml): version tags drive the release, stable versions must have a matching `CHANGELOG.md` section, and each configured build target uploads its own assets.
-
-~~~yaml
-name: Release
-
-on:
-  push:
-    tags: ['v*']
-
-permissions:
-  contents: write
-
-jobs:
-  release:
-    uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
-    with:
-      test-command: make check
-      build-command: make release
-      artifact-path: dist/*
-      build-matrix-json: >-
-        {"include":[
-          {"id":"linux-x64","os":"ubuntu-24.04","artifact_path":"dist/*.tar.gz"},
-          {"id":"linux-arm64","os":"ubuntu-24.04-arm","artifact_path":"dist/*.tar.gz"},
-          {"id":"macos-arm64","os":"macos-15","artifact_path":"dist/*.tar.gz"},
-          {"id":"windows-x64","os":"windows-latest","artifact_path":"dist/*.zip"}
-        ]}
-~~~
-
-Each matrix target can override `build_command`, `test_command`, and `artifact_path`. Adjust commands and artifact patterns to match the consuming project's actual package layout. A failed test/build or missing artifact blocks publication.
-
-For a stable tag such as `v1.2.0`, include a `## [1.2.0]` section in `CHANGELOG.md`. The workflow marks supported prerelease tags as prereleases and never promotes them to the stable `latest` release.
-
-See [Release guide](docs/RELEASES.md) for the full contract and dry-run behavior.
-
-## Source-only Release example
-
-Use `source-release.yml` when the deliverable is the source snapshot itself, not compiled binaries. This workflow does not build or test the project; run CI before tagging it.
-
-~~~yaml
-name: Source Release
-
-on:
-  push:
-    tags: ['v*']
-
-permissions:
-  contents: write
-
-jobs:
-  source:
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@main
-    with:
-      # Keep this aligned with the ref in `uses` (pin both to the same SHA/tag in production).
-      pipeline-ref: main
-      changelog-path: CHANGELOG.md
-      changelog-missing-policy: fail
-      release-notes-mode: section
-      changelog-asset-mode: archive-and-asset
-      source-archive-name: "{repository}-{tag}-source.zip"
-      source-submodules: fail-if-present
-~~~
-
-The default archive is built from files tracked by the exact tag commit, contains one top-level directory, and excludes `.git` metadata and workspace-only files. The release bundle includes `manifest.json` and `SHA256SUMS`. See [Source Release contract](docs/SOURCE-RELEASES.md) for changelog modes, exclusions, submodules, Gitleaks allowlists, and security behavior.
-
-## Benchmarks
-
-Use `benchmark.yml` to run a command multiple times. It uploads raw per-iteration logs, `iterations.csv`, `summary.csv`, and runner environment information. Supported categories are `micro`, `throughput`, `latency`, `memory`, `startup`, `scalability`, `regression`, and `size`.
-
-This repository also benchmarks itself: five runs of `make check` and five samples of tracked source size. Those are pipeline-maintenance measurements, not claims about application performance.
-
-See [Benchmark methodology](docs/BENCHMARKS.md) and the [latest benchmark run](https://github.com/m-mdy-m/pipeline/actions/workflows/benchmark-self.yml).
-
-## Publishing
-
-- **Docker Hub:** configure the `username` and `token` reusable-workflow secrets. Stable tags may publish `latest`; prereleases must not.
-- **npm:** map the project's `NPM_TOKEN` to `npm-token`. Prereleases publish using the `next` dist-tag.
-- **GitHub Pages:** configure the build command and output directory, then grant `pages: write` and `id-token: write` in the calling workflow.
-
-Publishing workflows are not run against external registries from this repository's test runs. They are syntax-checked here; consumers must configure their own credentials and targets.
-
-See [Secrets and permissions](docs/SECRETS.md) and [Workflow catalog](docs/WORKFLOWS.md).
-
-## Development
-
-Run the repository checks locally:
-
-~~~sh
-make check
-~~~
-
-The main workflows run the same documentation/workflow checks. `github-release-smoke.yml` exercises the build-release bundle; `source-release-smoke.yml` runs the source archive contract tests, Gitleaks scan, ZIP validation, manifest, and checksums. Both skip public release creation.
-
-Contribution instructions are in [CONTRIBUTING.md](CONTRIBUTING.md). The repository flow is defined in [`.gix/config`](.gix/config), and its project structure rules are in [`psx.yml`](psx.yml).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-### Verify a downloaded Source Release
-
-Download the source ZIP, `manifest.json`, `SHA256SUMS`, and any other assets into the same folder, then run:
-
-~~~sh
-python scripts/tools/verify_source_release.py ./downloaded-release
-~~~
-
-The implementation is componentized under `scripts/pipeline_release/`; Source Release logs in GitHub Actions use the pinned `m-mdy-m/log.c` C logger.
+See [CHANGELOG.md](CHANGELOG.md) for changes and [LICENSE](LICENSE) for the license.
