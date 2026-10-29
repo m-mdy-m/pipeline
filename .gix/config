@@ -1,0 +1,24 @@
+version: 1
+branches:
+  main:
+    kind: main
+  develop:
+    kind: develop
+branch_kinds:
+  feature:
+    prefix: feature/
+    parent: develop
+    merge_targets: [develop]
+  bugfix:
+    prefix: bugfix/
+    parent: develop
+    merge_targets: [develop]
+  hotfix:
+    prefix: hotfix/
+    parent: main
+    merge_targets: [main, develop]
+  release:
+    prefix: release/
+    parent: develop
+    merge_targets: [main, develop]
+    tag: true
