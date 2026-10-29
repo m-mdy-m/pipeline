@@ -8,7 +8,7 @@ Reusable GitHub Actions workflows for building, testing, benchmarking, packaging
 ## What it provides
 
 | Workflow | Purpose |
-|---|---|
+| --- | --- |
 | [ci.yml](.github/workflows/ci.yml) | Configurable build, test, lint, and toolchain setup |
 | [benchmark.yml](.github/workflows/benchmark.yml) | Repeatable measurements, timing summaries, environment details, and artifacts |
 | [release.yml](.github/workflows/release.yml) | Matrix builds, changelog-derived release notes, SHA-256 checksums, and GitHub Releases |
