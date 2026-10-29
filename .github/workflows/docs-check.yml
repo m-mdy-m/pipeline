@@ -1,0 +1,28 @@
+name: Documentation Check
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          globs: |
+            **/*.md
+            !node_modules
+      - name: Check common project documents
+        shell: bash
+        run: |
+          test -s README.md
+          test -s LICENSE
+          git diff --check
