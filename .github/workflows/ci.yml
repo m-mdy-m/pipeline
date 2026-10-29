@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Runtime/toolchain: go, node, rust, python, c, or custom"
+        required: true
+        type: string
+      build-command:
+        required: false
+        type: string
+        default: "make build"
+      test-command:
+        required: false
+        type: string
+        default: "make test"
+      lint-command:
+        required: false
+        type: string
+        default: ""
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      go-version:
+        required: false
+        type: string
+        default: "stable"
+      node-version:
+        required: false
+        type: string
+        default: "22"
+      rust-toolchain:
+        required: false
+        type: string
+        default: "stable"
+      python-version:
+        required: false
+        type: string
+        default: "3.12"
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        if: inputs.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+      - name: Set up Node.js
+        if: inputs.language == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - name: Set up Rust
+        if: inputs.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Python
+        if: inputs.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install Node dependencies
+        if: inputs.language == 'node' && hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
+        run: npm ci
+      - name: Install Python dependencies
+        if: inputs.language == 'python' && hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
+        run: python -m pip install -r requirements.txt
+      - name: Validate required commands
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: |
+          test -n "$BUILD_COMMAND" || { echo "build-command must not be empty"; exit 1; }
+          test -n "$TEST_COMMAND" || { echo "test-command must not be empty"; exit 1; }
+      - name: Build
+        run: ${{ inputs.build-command }}
+      - name: Test
+        run: ${{ inputs.test-command }}
+      - name: Lint
+        if: inputs.lint-command != ''
+        run: ${{ inputs.lint-command }}
