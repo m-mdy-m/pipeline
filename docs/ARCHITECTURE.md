@@ -1,39 +1,72 @@
-# Architecture
+# How pipeline is built
 
-## Core and provider boundary
+This page explains the main parts of pipeline in plain language.
 
-The task graph is stored in `pipeline.toml`. `scripts/pipeline_core/` owns schema validation, dependency planning, safe command execution, structured results and local artifact collection. It reads only the canonical `PIPELINE_*` context and does not import provider implementations.
+## The big picture
 
-Provider adapters live in `scripts/providers/`:
+pipeline separates **what should run** from **where it runs**.
 
-- `local/adapter.py` infers local Git ref, SHA and origin metadata when available.
-- `github/adapter.py` maps GitHub Actions event/ref/output information and configures GitHub-only submodule credentials.
-- `gitlab/adapter.py` maps GitLab CI variables and invokes the same core CLI.
+- The task list describes the work.
+- The core runs that work.
+- An adapter connects the core to a particular environment.
+- A CI workflow handles platform features such as uploading files or publishing a release.
 
-The `.github/workflows/` files are provider wrappers: they run the engine, upload artifacts, or publish to GitHub. `.gitlab-ci.yml` provides a second-provider integration example. The same `pipeline.toml` tasks can run locally, through GitHub Actions, or through GitLab CI.
+That means the same task list can be used on a developer's computer, in GitHub Actions, or in GitLab CI.
 
-## Contracts and safety
+## The main files
 
-- Commands are arrays of arguments; shell execution is never implicit.
-- Unknown task names, dependencies, cycles, workspace escapes and invalid timeouts fail validation before tasks run.
-- Dependencies run in topological order. Failed dependencies skip dependants; fail-fast is the default.
-- Run reports use versioned JSON; logs go to stderr.
-- The local artifact store copies regular files atomically, computes SHA-256 and writes `artifacts.json`.
-- Provider adapters translate runner variables and output-file locations; business logic never reads `GITHUB_*` or `CI_*`.
+### 1. `pipeline.toml` — the task list
 
-Run locally:
+This is where tasks are named and connected. A task can run a command, and it can depend on another task. For example, tests can depend on validation, so invalid configuration is caught first.
 
-~~~sh
+### 2. `scripts/pipeline.py` — the command you run
+
+This is the simple entry point for everyday use:
+
+```sh
 python scripts/pipeline.py validate
-python scripts/pipeline.py list --json
-python scripts/pipeline.py run check --json --result .pipeline-artifacts/pipeline-result.json
+python scripts/pipeline.py list
+python scripts/pipeline.py run check
+```
+
+### 3. `scripts/pipeline_core/` — the engine
+
+The core checks the task list, figures out the correct order, runs commands, handles failures and timeouts, and writes result reports. It uses a shared set of environment names beginning with `PIPELINE_`; it does not read GitHub- or GitLab-specific variables directly.
+
+### 4. `scripts/providers/` — adapters
+
+An adapter converts the environment's information into the shared format.
+
+- `local/` works on your computer.
+- `github/` translates GitHub Actions information and handles GitHub-only setup when needed.
+- `gitlab/` translates GitLab CI information.
+
+### 5. `.github/workflows/` and `.gitlab-ci.yml` — automation entry points
+
+These files tell a CI service when to run something. GitHub workflow files also use GitHub-specific features for artifacts, releases, Docker Hub, npm, and Pages. Those features belong in the provider layer; they are not part of the shared task engine.
+
+## What happens when a task runs?
+
+1. pipeline reads `pipeline.toml`.
+2. It checks that task names, commands, and dependencies are valid.
+3. It works out which tasks must run first.
+4. It runs each command and records its result.
+5. If a task fails, tasks that depend on it are skipped.
+6. It can save a JSON report and collect files as artifacts.
+
+Commands are written as lists of arguments, not as shell strings. This helps pipeline run commands predictably.
+
+## Try the same task through different adapters
+
+```sh
+python scripts/pipeline.py run check --json
 python scripts/providers/local/adapter.py run check --json
 python scripts/providers/github/adapter.py task check --json
 python scripts/providers/gitlab/adapter.py run check --json
-~~~
+```
 
-Tests in `tests/test_pipeline_core.py` cover context isolation, provider mappings, graph validation, execution order, failure/timeout semantics, CLI end-to-end execution and artifact integrity.
+The adapter examples share the same task graph. The GitHub and GitLab adapters can be tested with simulated environment variables, but that does not prove that every hosted CI feature has been tested on those services.
 
-## Provider adapter end-to-end acceptance
+## Tests
 
-The unit suite runs the same generated task graph through executable Local, GitHub and GitLab adapters. It verifies that each runs dependency tasks in order, propagates the portable workspace/provider context, emits the same versioned JSON report contract and records the correct provider. Repository CI also executes the committed `pipeline.toml` task graph through the GitHub adapter rather than invoking task logic directly.
+The test suite checks task ordering, invalid configurations, timeouts, failures, artifact checksums, and adapter behavior. It also runs one task graph through all three adapters to check that they follow the same core contract.
