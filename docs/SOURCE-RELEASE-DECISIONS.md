@@ -26,7 +26,7 @@ This document records the Source Release contract for `m-mdy-m/pipeline`. It dis
 
 | Decision | Implementation choice | Why |
 | --- | --- | --- |
-| Stable and prerelease tags | Accept `vMAJOR.MINOR.PATCH` and `vMAJOR.MINOR.PATCH-(alpha|beta|rc).N`. Real tags must point to the exact event commit. | Avoid ambiguous version formats or packaging a different commit than the release tag. |
+| Stable and prerelease tags | Accept `vMAJOR.MINOR.PATCH` and `vMAJOR.MINOR.PATCH-(alpha, beta, or rc).N`. Real tags must point to the exact event commit. | Avoid ambiguous version formats or packaging a different commit than the release tag. |
 | Branch dry-run | Use `0.0.0-dev.<short-sha>` and, if no exact synthetic-version section exists, use `Unreleased` only for a branch smoke run. A real tag always requires the exact version heading. | Lets CI exercise packaging without relaxing the real release contract. |
 | Changelog missing policy values | `fail` or `warn`; `fail` is the default. With `warn`, a missing/blank changelog yields generated generic notes. `asset-only` still requires a non-empty changelog. | A requested separate changelog asset cannot be supplied when no source file exists. |
 | Candidate filenames | Auto-detect only `CHANGELOG`, `CHANGELOG.md`, `CHANGELOG.txt`, and their `docs/` equivalents. Symlink changelog candidates are rejected. | A small deterministic set avoids unexpectedly selecting unrelated documents. |
