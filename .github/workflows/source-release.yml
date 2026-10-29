@@ -86,10 +86,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: source-release-${{ github.repository }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   package:
     name: Validate source and create release bundle
@@ -100,20 +96,6 @@ jobs:
       version: ${{ steps.prepare.outputs.version }}
       archive_name: ${{ steps.prepare.outputs.archive_name }}
       prerelease: ${{ steps.prepare.outputs.prerelease }}
-    env:
-      SOURCE_DRY_RUN: ${{ inputs.dry-run }}
-      SOURCE_ARCHIVE_NAME: ${{ inputs.source-archive-name }}
-      SOURCE_CHANGELOG_PATH: ${{ inputs.changelog-path }}
-      SOURCE_CHANGELOG_MISSING_POLICY: ${{ inputs.changelog-missing-policy }}
-      SOURCE_CHANGELOG_ASSET_MODE: ${{ inputs.changelog-asset-mode }}
-      SOURCE_RELEASE_NOTES_MODE: ${{ inputs.release-notes-mode }}
-      SOURCE_RELEASE_NOTES_PATH: ${{ inputs.release-notes-path }}
-      SOURCE_SUBMODULES: ${{ inputs.source-submodules }}
-      SOURCE_EXCLUDE_PATTERNS: ${{ inputs.source-exclude-patterns }}
-      SOURCE_SENSITIVE_PATH_PATTERNS: ${{ inputs.source-sensitive-path-patterns }}
-      SOURCE_SENSITIVE_ALLOWLIST_PATTERNS: ${{ inputs.source-sensitive-allowlist-patterns }}
-      SOURCE_GITLEAKS_ALLOWLIST_PATH: ${{ inputs.source-gitleaks-allowlist-path }}
-      SOURCE_SUBMODULE_TOKEN: ${{ secrets.submodule-token }}
     steps:
       - name: Check out the exact caller snapshot
         uses: actions/checkout@v7
@@ -141,6 +123,19 @@ jobs:
         shell: bash
         env:
           SOURCE_WORK_DIR: ${{ runner.temp }}/pipeline-source-release
+          SOURCE_DRY_RUN: ${{ inputs.dry-run }}
+          SOURCE_ARCHIVE_NAME: ${{ inputs.source-archive-name }}
+          SOURCE_CHANGELOG_PATH: ${{ inputs.changelog-path }}
+          SOURCE_CHANGELOG_MISSING_POLICY: ${{ inputs.changelog-missing-policy }}
+          SOURCE_CHANGELOG_ASSET_MODE: ${{ inputs.changelog-asset-mode }}
+          SOURCE_RELEASE_NOTES_MODE: ${{ inputs.release-notes-mode }}
+          SOURCE_RELEASE_NOTES_PATH: ${{ inputs.release-notes-path }}
+          SOURCE_SUBMODULES: ${{ inputs.source-submodules }}
+          SOURCE_EXCLUDE_PATTERNS: ${{ inputs.source-exclude-patterns }}
+          SOURCE_SENSITIVE_PATH_PATTERNS: ${{ inputs.source-sensitive-path-patterns }}
+          SOURCE_SENSITIVE_ALLOWLIST_PATTERNS: ${{ inputs.source-sensitive-allowlist-patterns }}
+          SOURCE_GITLEAKS_ALLOWLIST_PATH: ${{ inputs.source-gitleaks-allowlist-path }}
+          SOURCE_SUBMODULE_TOKEN: ${{ secrets.submodule-token }}
         run: python .pipeline/scripts/source_release.py prepare
 
       - name: Scan the actual published source with Gitleaks
