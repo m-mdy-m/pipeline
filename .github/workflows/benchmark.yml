@@ -1,0 +1,83 @@
+name: Benchmark
+
+on:
+  workflow_call:
+    inputs:
+      benchmark-command:
+        description: "Command that runs benchmarks and writes results to benchmark-results/"
+        required: true
+        type: string
+      category:
+        description: "micro, throughput, latency, memory, startup, scalability, regression, or size"
+        required: true
+        type: string
+      repetitions:
+        required: false
+        type: number
+        default: 5
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      setup-command:
+        required: false
+        type: string
+        default: ""
+    outputs:
+      artifact-name:
+        description: "Name of the uploaded benchmark artifact"
+        value: ${{ jobs.benchmark.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: benchmark-results-${{ github.run_id }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate benchmark configuration
+        env:
+          CATEGORY: ${{ inputs.category }}
+          REPETITIONS: ${{ inputs.repetitions }}
+        run: |
+          case "$CATEGORY" in micro|throughput|latency|memory|startup|scalability|regression|size) ;; *) echo "Unsupported category: $CATEGORY"; exit 2;; esac
+          test "$REPETITIONS" -ge 1
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+      - name: Run repeated benchmark
+        env:
+          BENCHMARK_COMMAND: ${{ inputs.benchmark-command }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          CATEGORY: ${{ inputs.category }}
+        run: |
+          set -eu
+          mkdir -p benchmark-results
+          printf 'category,iteration,started_utc,exit_code\n' > benchmark-results/iterations.csv
+          i=1
+          while [ "$i" -le "$REPETITIONS" ]; do
+            started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            set +e
+            sh -c "$BENCHMARK_COMMAND" 2>&1 | tee "benchmark-results/${CATEGORY}-${i}.log"
+            code=${PIPESTATUS[0]}
+            set -e
+            printf '%s,%s,%s,%s\n' "$CATEGORY" "$i" "$started" "$code" >> benchmark-results/iterations.csv
+            [ "$code" -eq 0 ] || exit "$code"
+            i=$((i + 1))
+          done
+          uname -a > benchmark-results/environment.txt
+          lscpu >> benchmark-results/environment.txt || true
+          free -h >> benchmark-results/environment.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: ${{ inputs.working-directory }}/benchmark-results/
+          if-no-files-found: warn
+          retention-days: 30
