@@ -6,6 +6,10 @@ on:
       build-command:
         required: true
         type: string
+      test-command:
+        description: "Required test command; release is blocked if tests fail"
+        required: true
+        type: string
       artifact-path:
         description: "Files to upload, glob accepted"
         required: false
@@ -30,6 +34,9 @@ jobs:
       - name: Require a version tag
         run: |
           [[ "$GITHUB_REF" == refs/tags/v* ]] || { echo "Release workflow requires a v* tag"; exit 1; }
+      - name: Run release tests
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ inputs.test-command }}
       - name: Build release artifacts
         working-directory: ${{ inputs.working-directory }}
         run: ${{ inputs.build-command }}
