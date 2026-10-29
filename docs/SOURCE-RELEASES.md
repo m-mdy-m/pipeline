@@ -110,22 +110,22 @@ The tests cover common changelog headings, exact version section extraction, dup
 
 ## Modular implementation and logging
 
-The CLI entry point remains \`scripts/source_release.py\`; implementation components live under \`scripts/pipeline_release/\`:
+The CLI entry point remains `scripts/source_release.py`; implementation components live under `scripts/pipeline_release/`:
 
-- \`runtime.py\`: shared paths, version expressions and process-local state.
-- \`logger.py\`: structured logger facade using \`m-mdy-m/log.c\` through its stable C ABI.
-- \`tools.py\`: environment/Git commands, safe command execution, SHA-256 and atomic filesystem helpers.
-- \`git_snapshot.py\` and \`paths.py\`: Git tree/submodule handling, path policy and symlink validation.
-- \`changelog.py\`, \`release_meta.py\`, \`security.py\`: changelog parsing, tag/name validation and Gitleaks config.
-- \`prepare.py\`, \`archive.py\`, \`package.py\`: staging, deterministic ZIP validation and asset assembly.
-- \`verify.py\`: post-download manifest/checksum/ZIP verifier.
-- \`cli.py\`: command routing and top-level error reporting.
+- `runtime.py`: shared paths, version expressions and process-local state.
+- `logger.py`: structured logger facade using `m-mdy-m/log.c` through its stable C ABI.
+- `tools.py`: environment/Git commands, safe command execution, SHA-256 and atomic filesystem helpers.
+- `git_snapshot.py` and `paths.py`: Git tree/submodule handling, path policy and symlink validation.
+- `changelog.py`, `release_meta.py`, `security.py`: changelog parsing, tag/name validation and Gitleaks config.
+- `prepare.py`, `archive.py`, `package.py`: staging, deterministic ZIP validation and asset assembly.
+- `verify.py`: post-download manifest/checksum/ZIP verifier.
+- `cli.py`: command routing and top-level error reporting.
 
-The workflow checks out \`m-mdy-m/log.c\` at commit \`c9b53e9901dc7103eb50be282ae055fe16e98f9a\`, compiles it, and sets \`PIPELINE_LOG_LIBRARY\`. The Python facade uses \`mmlog_logger_write()\`, the stable non-variadic ABI. A stderr fallback is used for isolated local tests only when no native library path is configured; a configured but missing library is an error.
+The workflow checks out `m-mdy-m/log.c` at commit `c9b53e9901dc7103eb50be282ae055fe16e98f9a`, compiles it, and sets `PIPELINE_LOG_LIBRARY`. The Python facade uses `mmlog_logger_write()`, the stable non-variadic ABI. A stderr fallback is used for isolated local tests only when no native library path is configured; a configured but missing library is an error.
 
 ### Verify a downloaded Source Release
 
-Download the source ZIP, \`manifest.json\`, \`SHA256SUMS\`, and any separate changelog asset into one directory, then run:
+Download the source ZIP, `manifest.json`, `SHA256SUMS`, and any separate changelog asset into one directory, then run:
 
 ~~~sh
 python scripts/tools/verify_source_release.py ./downloaded-release
@@ -135,4 +135,4 @@ The verifier checks asset checksums, the manifest archive hash, ZIP CRC, member 
 
 ### Adding new components
 
-Put reusable operations in a focused module under \`scripts/pipeline_release/\`; use \`prepare.py\`, \`package.py\` and \`cli.py\` for orchestration. Shared command and filesystem operations belong in \`tools.py\`, not copied into every script. Keep \`scripts/source_release.py\` as the stable compatibility entry point, add tests under \`tests/\`, and run \`make check\`.
+Put reusable operations in a focused module under `scripts/pipeline_release/`; use `prepare.py`, `package.py` and `cli.py` for orchestration. Shared command and filesystem operations belong in `tools.py`, not copied into every script. Keep `scripts/source_release.py` as the stable compatibility entry point, add tests under `tests/`, and run `make check`.
