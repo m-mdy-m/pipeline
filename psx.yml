@@ -1,14 +1,39 @@
 version: 1
+
 project:
-  name: pipeline
-  type: tooling
-standards:
-  readme: required
-  license: MIT
-  makefile: required
-  changelog: recommended
-  contributing: required
-  code_of_conduct: recommended
-docs:
-  directory: docs
-  index: docs/README.md
+  type: ""
+
+rules:
+  readme: error
+  license: warning
+  changelog: info
+  tests_folder: error
+  docs_folder: info
+  contributing: info
+  api_docs: warning
+  security: info
+  code_of_conduct: info
+  pull_request_template: info
+  issue_templates: info
+  pre_commit: info
+  editorconfig: info
+  code_owners: info
+  dockerfile: info
+  dockerignore: info
+
+custom:
+  folders:
+    - path: "docs"
+      structure:
+        architecture: {}
+        development: {}
+    - path: ".github/workflows"
+    - path: "scripts"
+  files:
+    - path: "/Makefile"
+    - path: "/CONTRIBUTING.md"
+    - path: "/docs/README.md"
+    - path: "/docs/WORKFLOWS.md"
+    - path: "/docs/SECRETS.md"
+    - path: "/docs/BENCHMARKS.md"
+    - path: "/docs/RELEASES.md"
