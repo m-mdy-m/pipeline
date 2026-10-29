@@ -112,6 +112,7 @@ class ArchiveIntegrationTests(unittest.TestCase):
             scripts_root = Path(__file__).resolve().parents[1] / "scripts"
             script_dest.write_bytes((scripts_root / "source_release.py").read_bytes())
             shutil.copytree(scripts_root / "pipeline_release", root / "scripts" / "pipeline_release")
+            shutil.copytree(scripts_root / "pipeline_core", root / "scripts" / "pipeline_core")
             subprocess.run(["git", "add", "scripts"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-qm", "add modular helper"], cwd=root, check=True)
             commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
@@ -119,8 +120,8 @@ class ArchiveIntegrationTests(unittest.TestCase):
             outputs = root / "outputs.txt"
             env = os.environ.copy()
             env.update({
-                "GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": "v1.2.3", "GITHUB_SHA": commit,
-                "GITHUB_REPOSITORY": "demo/project", "GITHUB_OUTPUT": str(outputs), "SOURCE_WORK_DIR": str(root / "work"),
+                "PIPELINE_REF_TYPE": "tag", "PIPELINE_REF_NAME": "v1.2.3", "PIPELINE_SHA": commit,
+                "PIPELINE_REPOSITORY": "demo/project", "PIPELINE_WORKSPACE": str(root), "PIPELINE_OUTPUT_FILE": str(outputs), "SOURCE_WORK_DIR": str(root / "work"),
                 "SOURCE_DRY_RUN": "false", "SOURCE_CHANGELOG_PATH": "",
                 "SOURCE_CHANGELOG_MISSING_POLICY": "fail", "SOURCE_CHANGELOG_ASSET_MODE": mode,
                 "SOURCE_ARCHIVE_NAME": "{repository}-{tag}-source.zip", "SOURCE_SUBMODULES": "fail-if-present",

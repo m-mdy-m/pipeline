@@ -40,10 +40,14 @@ def git_output(args: Sequence[str], *, cwd: Path = REPO_ROOT) -> str:
 
 
 def write_outputs(values: dict[str, object]) -> None:
-    output_file = env("GITHUB_OUTPUT")
+    output_file = env("PIPELINE_OUTPUT_FILE")
     lines = [f"{key}={str(value).lower() if isinstance(value, bool) else value}" for key, value in values.items()]
     if output_file:
-        with open(output_file, "a", encoding="utf-8", newline="\n") as stream:
+        target = Path(output_file)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if any("\n" in line or "\r" in line for line in lines):
+            raise ReleaseError("Output values must not contain newline characters")
+        with target.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write("\n".join(lines) + "\n")
     for line in lines:
         logger.info(line, component="workflow-output")

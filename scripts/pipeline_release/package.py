@@ -11,6 +11,7 @@ from .paths import safe_repo_path
 from .release_meta import build_names, validate_tag_and_version
 from .runtime import RELEASE_ASSETS, SOURCE_TREE, STATE
 from .tools import atomic_write_text, env, write_outputs
+from pipeline_core.context import PipelineContext
 
 
 def package() -> None:
@@ -63,7 +64,7 @@ def package() -> None:
     archive_hash = sha256_file(archive_path)
     manifest = {
         "schema_version": 1,
-        "project": env("GITHUB_REPOSITORY", repository),
+        "project": PipelineContext.from_environment().repository or repository,
         "version": version,
         "tag": tag_label,
         "snapshot_commit": snapshot_ref,

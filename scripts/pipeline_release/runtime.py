@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REPO_ROOT = Path.cwd().resolve()
+REPO_ROOT = Path(os.environ.get("PIPELINE_WORKSPACE") or Path.cwd()).resolve()
 WORK_DIR = Path(os.environ.get("SOURCE_WORK_DIR", str(REPO_ROOT / ".source-release-work"))).resolve()
 SOURCE_TREE = WORK_DIR / "source-tree"
 SCAN_TREE = WORK_DIR / "secret-scan"

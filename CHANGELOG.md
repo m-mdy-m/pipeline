@@ -6,6 +6,8 @@ Notable changes to this project are documented here. Stable release tags must ha
 
 ### Added
 
+- Provider-neutral pipeline core with TOML task graph, normalized context, local artifacts and Local/GitHub/GitLab adapters.
+- Provider contract and integration tests for context isolation, dependencies, failure/timeout handling, CLI execution and artifact checksums.
 - Modular Source Release implementation with reusable Git, path, changelog, security, archive, logger and bundle-verification components.
 - Native structured logging through the pinned m-mdy-m/log.c C ABI and a post-download asset verifier.
 

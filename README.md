@@ -3,9 +3,9 @@
 [![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg)](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml)
 [![License](https://img.shields.io/github/license/m-mdy-m/pipeline)](LICENSE)
 
-**pipeline** is a catalog of reusable GitHub Actions workflows for project CI, multi-platform releases, benchmarks, and publishing. A consuming repository adds a small caller workflow and supplies its own commands, build matrix, and secrets.
+**pipeline** is a provider-neutral automation core with CI-provider adapters for local execution, GitHub Actions and GitLab CI. The core describes and runs tasks, validates dependencies, and collects artifacts; provider wrappers translate runner variables, outputs, uploads and publishing into platform-specific operations.
 
-It is designed to reuse the same workflow logic across repositories without forcing every project into one language, build system, or release layout.
+The goal is to keep task logic independent of any single CI platform. GitHub Actions is one provider—not the source of truth for the task graph.
 
 ## Features
 
@@ -59,6 +59,25 @@ For production repositories, pin the reusable workflow to a reviewed commit SHA 
 | [`docs-check.yml`](.github/workflows/docs-check.yml) | Markdown and workflow validation |
 
 All entries above are reusable workflows. Repository-specific test and smoke workflows are kept separate so they do not accidentally publish packages, containers, or a public release.
+
+## Provider-neutral execution
+
+Tasks are declared in \`pipeline.toml\`, using dependency graphs and argument-array commands. Run the same core locally:
+
+~~~sh
+python scripts/pipeline.py validate
+python scripts/pipeline.py list --json
+python scripts/pipeline.py run check --json --result .pipeline-artifacts/pipeline-result.json
+~~~
+
+Provider adapters normalize runner variables before invoking the core:
+
+~~~sh
+python scripts/providers/local/adapter.py run check --json
+python scripts/providers/gitlab/adapter.py run check --json
+~~~
+
+The reusable workflows under \`.github/workflows/\` are GitHub-side wrappers. \`.gitlab-ci.yml\` is an example for the same task graph on GitLab. See [Architecture](docs/ARCHITECTURE.md).
 
 ## GitHub Release example
 

@@ -15,6 +15,7 @@ from .release_meta import build_names, validate_tag_and_version
 from .runtime import DEFAULT_SENSITIVE_ALLOWLIST, DEFAULT_SENSITIVE_PATTERNS, REPO_ROOT, RELEASE_ASSETS, REPORTS, SCAN_TREE, SOURCE_TREE, STATE, WORK_DIR
 from .security import compose_gitleaks_config, validate_allowlist_path
 from .tools import atomic_write_text, env, git_output, parse_lines, run_git, write_outputs
+from pipeline_core.context import PipelineContext
 
 
 def clear_staging() -> None:
@@ -26,7 +27,7 @@ def clear_staging() -> None:
 
 
 def prepare() -> None:
-    STATE.token_to_redact = ""
+    STATE.token_to_redact = env("PIPELINE_SECRET_REDACTIONS")
     STATE.omitted_submodules.clear()
     repository, version, tag_label, prerelease, snapshot_ref = validate_tag_and_version()
     archive_name, root_folder = build_names(repository, version, tag_label)
@@ -34,18 +35,8 @@ def prepare() -> None:
     if submodule_mode not in {"fail-if-present", "recursive", "omit"}:
         raise ReleaseError("source-submodules must be one of: fail-if-present, recursive, omit")
     if submodule_mode == "recursive":
-        # Optional token is used only for submodule HTTPS clones and is never echoed.
-        token = env("SOURCE_SUBMODULE_TOKEN")
-        if token:
-            STATE.token_to_redact = token
-            try:
-                count = int(os.environ.get("GIT_CONFIG_COUNT", "0"))
-            except ValueError:
-                raise ReleaseError("GIT_CONFIG_COUNT has an invalid value")
-            os.environ[f"GIT_CONFIG_KEY_{count}"] = f"url.https://x-access-token:{token}@github.com/.insteadOf"
-            os.environ[f"GIT_CONFIG_VALUE_{count}"] = "https://github.com/"
-            os.environ["GIT_CONFIG_COUNT"] = str(count + 1)
-            os.environ.pop("SOURCE_SUBMODULE_TOKEN", None)
+        # Authentication is configured by the selected provider adapter. Core
+        # only inherits standard Git configuration environment variables.
         logger.info("Initializing submodules at the exact commits pinned by the tag", component="submodules")
         run_git(["submodule", "update", "--init", "--recursive"])
 
@@ -62,7 +53,7 @@ def prepare() -> None:
         raise ReleaseError("changelog-asset-mode must be archive-only, archive-and-asset, or asset-only")
 
     section_for_notes: str | None = None
-    dry_run_branch = env("SOURCE_DRY_RUN", "false").lower() == "true" and env("GITHUB_REF_TYPE") != "tag"
+    dry_run_branch = env("SOURCE_DRY_RUN", "false").lower() == "true" and PipelineContext.from_environment(workspace=REPO_ROOT).ref_type != "tag"
     if not changelog_nonempty:
         reason = "not found" if changelog_entry is None else "empty or whitespace-only"
         if missing_policy == "fail":
@@ -70,7 +61,6 @@ def prepare() -> None:
         if asset_mode == "asset-only":
             raise ReleaseError("changelog-asset-mode: asset-only requires a non-empty changelog")
         logger.warning(f"Changelog {reason}; continuing because policy is warn", component="changelog")
-        print(f"::warning title=Source Release::Changelog {reason}; continuing because policy is warn")
         changelog_entry = None
         changelog_text = None
     else:
