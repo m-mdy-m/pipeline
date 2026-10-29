@@ -87,7 +87,7 @@ depends_on = ["prepare"]
 
                 command = [sys.executable, str(entrypoints[provider])]
                 if provider == "github":
-                    command += ["run", "run", "verify"]
+                    command += ["task", "verify"]
                 else:
                     command += ["run", "verify"]
                 command += ["--root", str(root), "--config", str(config),

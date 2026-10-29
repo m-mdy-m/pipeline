@@ -22,6 +22,6 @@ jobs:
       - name: Check required files and workflow inventory
         run: make docs-check workflow-inventory
       - name: Execute shared task graph through GitHub provider adapter
-        run: python scripts/providers/github/adapter.py run run check --json --result .pipeline-artifacts/pipeline-result.json
+        run: python scripts/providers/github/adapter.py task check --json --result .pipeline-artifacts/pipeline-result.json
       - name: Check whitespace
         run: git diff --check
