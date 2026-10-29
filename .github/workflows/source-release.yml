@@ -1,0 +1,223 @@
+name: Source-only GitHub Release
+
+on:
+  workflow_call:
+    inputs:
+      pipeline-ref:
+        description: "Ref of m-mdy-m/pipeline containing the helper script; keep this aligned with the workflow ref"
+        required: false
+        type: string
+        default: main
+      changelog-path:
+        description: "Explicit tracked changelog path. Empty means strict auto-detection of one supported candidate"
+        required: false
+        type: string
+        default: ""
+      changelog-missing-policy:
+        description: "What to do when the changelog is missing or empty: fail or warn"
+        required: false
+        type: string
+        default: fail
+      release-notes-mode:
+        description: "Release body source: section, full, or file"
+        required: false
+        type: string
+        default: section
+      release-notes-path:
+        description: "Tracked UTF-8 file used when release-notes-mode is file"
+        required: false
+        type: string
+        default: ""
+      changelog-asset-mode:
+        description: "archive-only, archive-and-asset, or asset-only"
+        required: false
+        type: string
+        default: archive-only
+      source-archive-name:
+        description: "ZIP basename template; supports {repository}, {tag}, and {version}"
+        required: false
+        type: string
+        default: "{repository}-{tag}-source.zip"
+      source-submodules:
+        description: "fail-if-present, recursive, or omit; recursive exports the exact pinned commits"
+        required: false
+        type: string
+        default: fail-if-present
+      source-exclude-patterns:
+        description: "Optional newline-separated glob patterns to omit from the ZIP; excluded paths are logged"
+        required: false
+        type: string
+        default: ""
+      source-sensitive-path-patterns:
+        description: "Additional newline-separated sensitive-path globs; built-in sensitive patterns always apply"
+        required: false
+        type: string
+        default: ""
+      source-sensitive-allowlist-patterns:
+        description: "Explicit newline-separated path-pattern exceptions to sensitive-path checks"
+        required: false
+        type: string
+        default: ""
+      source-gitleaks-allowlist-path:
+        description: "Optional tracked TOML file containing only Gitleaks [allowlist] or [[allowlists]] tables"
+        required: false
+        type: string
+        default: ""
+      dry-run:
+        description: "Build and verify everything without creating or updating a GitHub Release"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      submodule-token:
+        description: "Optional token with read access to private GitHub submodules when recursive mode is enabled"
+        required: false
+    outputs:
+      version:
+        description: "Resolved release version"
+        value: ${{ jobs.package.outputs.version }}
+      archive-name:
+        description: "Validated Source ZIP filename"
+        value: ${{ jobs.package.outputs.archive_name }}
+      prerelease:
+        description: "Whether the version is a prerelease"
+        value: ${{ jobs.package.outputs.prerelease }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Validate source and create release bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      archive_name: ${{ steps.prepare.outputs.archive_name }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+    env:
+      SOURCE_WORK_DIR: ${{ runner.temp }}/pipeline-source-release
+      SOURCE_DRY_RUN: ${{ inputs.dry-run }}
+      SOURCE_ARCHIVE_NAME: ${{ inputs.source-archive-name }}
+      SOURCE_CHANGELOG_PATH: ${{ inputs.changelog-path }}
+      SOURCE_CHANGELOG_MISSING_POLICY: ${{ inputs.changelog-missing-policy }}
+      SOURCE_CHANGELOG_ASSET_MODE: ${{ inputs.changelog-asset-mode }}
+      SOURCE_RELEASE_NOTES_MODE: ${{ inputs.release-notes-mode }}
+      SOURCE_RELEASE_NOTES_PATH: ${{ inputs.release-notes-path }}
+      SOURCE_SUBMODULES: ${{ inputs.source-submodules }}
+      SOURCE_EXCLUDE_PATTERNS: ${{ inputs.source-exclude-patterns }}
+      SOURCE_SENSITIVE_PATH_PATTERNS: ${{ inputs.source-sensitive-path-patterns }}
+      SOURCE_SENSITIVE_ALLOWLIST_PATTERNS: ${{ inputs.source-sensitive-allowlist-patterns }}
+      SOURCE_GITLEAKS_ALLOWLIST_PATH: ${{ inputs.source-gitleaks-allowlist-path }}
+      SOURCE_SUBMODULE_TOKEN: ${{ secrets.submodule-token }}
+    steps:
+      - name: Check out the exact caller snapshot
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Check out pipeline helper code
+        uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/pipeline
+          ref: ${{ inputs.pipeline-ref }}
+          path: .pipeline
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Prepare exact source snapshot and release notes
+        id: prepare
+        shell: bash
+        run: python .pipeline/scripts/source_release.py prepare
+
+      - name: Scan the actual published source with Gitleaks
+        shell: bash
+        env:
+          SOURCE_SCAN_DIR: ${{ runner.temp }}/pipeline-source-release/secret-scan
+          SOURCE_REPORT_DIR: ${{ runner.temp }}/pipeline-source-release/reports
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/gitleaks/gitleaks:v8.30.1
+          args=(dir --redact --no-banner --report-format json --report-path /reports/gitleaks.json --exit-code 1 --config /reports/gitleaks.toml)
+          docker run --rm --network none --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m --env HOME=/tmp \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$SOURCE_SCAN_DIR,target=/scan,readonly" \
+            --mount "type=bind,source=$SOURCE_REPORT_DIR,target=/reports" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 "${args[@]}" /scan
+
+      - name: Package, validate ZIP, and generate manifest/checksums
+        id: package
+        shell: bash
+        env:
+          SOURCE_CHANGELOG_PATH: ${{ steps.prepare.outputs.changelog_path }}
+          SOURCE_EXCLUDED_PATH_COUNT: ${{ steps.prepare.outputs.excluded_path_count }}
+          SOURCE_OMITTED_SUBMODULE_COUNT: ${{ steps.prepare.outputs.omitted_submodule_count }}
+        run: python .pipeline/scripts/source_release.py package
+
+      - name: Upload verified source release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-release-bundle
+          path: |
+            ${{ runner.temp }}/pipeline-source-release/release-assets/
+            ${{ runner.temp }}/pipeline-source-release/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish source-only GitHub Release
+    needs: package
+    if: inputs.dry-run != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: source-release-bundle
+          path: .
+
+      - name: Refuse to overwrite an existing release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --output "$RUNNER_TEMP/release-check.json" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$REPOSITORY/releases/tags/$TAG_NAME")"
+          case "$response" in
+            404) echo "No existing GitHub Release found for $TAG_NAME." ;;
+            200) echo "A GitHub Release already exists for $TAG_NAME; refusing to overwrite it." >&2; exit 1 ;;
+            *) echo "Could not verify release uniqueness (HTTP $response); refusing to publish." >&2; cat "$RUNNER_TEMP/release-check.json" >&2; exit 1 ;;
+          esac
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Source Release ${{ needs.package.outputs.version }}
+          body_path: release-notes.md
+          files: release-assets/*
+          prerelease: ${{ needs.package.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.package.outputs.prerelease != 'true' }}
+          overwrite_files: false
+          token: ${{ github.token }}

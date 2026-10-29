@@ -2,6 +2,10 @@
 
 The reusable release workflow is .github/workflows/release.yml. It is based on the tag-validation, per-platform build, changelog parsing, artifact aggregation, and checksum pattern used by [cdin-editor/kernel](https://github.com/cdin-editor/kernel/blob/main/.github/workflows/release.yml), but exposes those decisions as caller inputs rather than hard-coding one project's ABI or packaging commands.
 
+## Source-only releases
+
+For source ZIP releases without platform builds, use [the separate Source Release workflow](SOURCE-RELEASES.md). It packages tracked files from the exact tag commit, applies changelog and sensitive-path policy, scans the published payload with Gitleaks, and creates a manifest plus SHA-256 checksums. It does not replace this build-oriented workflow.
+
 ## Release contract
 
 1. Run the caller workflow on a tag that matches vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-(alpha|beta|rc).N.

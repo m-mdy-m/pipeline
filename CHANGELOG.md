@@ -6,6 +6,8 @@ Notable changes to this project are documented here. Stable release tags must ha
 
 ### Added
 
+- A dedicated source-only GitHub Release workflow with strict tag snapshots, configurable changelog handling, secret/path checks, and validated ZIP packaging.
+- Source release contract tests, a dry-run smoke workflow, machine-readable manifest, and SHA-256 checksum manifest.
 - Reusable GitHub Actions workflows for CI, benchmarks, release packaging, Docker Hub, npm, and GitHub Pages.
 - Tag validation and release notes generated from this changelog.
 - A release dry-run that builds and verifies assets without publishing.

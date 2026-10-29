@@ -10,7 +10,8 @@ It is designed to reuse the same workflow logic across repositories without forc
 ## Features
 
 - **CI:** configure build, test, and optional lint commands for Go, Node.js, Rust, Python, C, or custom projects.
-- **GitHub Releases:** validate version tags, read release notes from `CHANGELOG.md`, run tests and builds for each matrix target, collect assets, generate SHA-256 checksums, and publish a release.
+- **Build Releases:** validate version tags, run tests and matrix builds, collect artifacts, generate SHA-256 checksums, and publish a release.
+- **Source Releases:** package the exact Git-tag snapshot into a configurable source ZIP, validate changelog/version rules, scan published content with Gitleaks, and generate a manifest plus checksums.
 - **Benchmarks:** repeat a command, retain per-run logs, capture runner details, and export min/median/mean/max timing summaries.
 - **Publishing:** reusable workflows for Docker Hub, npm, and GitHub Pages.
 - **Validation:** Markdown lint, GitHub Actions syntax/expression lint, and a repository workflow inventory check.
@@ -50,6 +51,7 @@ For production repositories, pin the reusable workflow to a reviewed commit SHA 
 | --- | --- |
 | [`ci.yml`](.github/workflows/ci.yml) | Build, test, and optional lint |
 | [`release.yml`](.github/workflows/release.yml) | Tag and changelog validation, matrix builds, checksums, and GitHub Releases |
+| [`source-release.yml`](.github/workflows/source-release.yml) | Source-only ZIP, changelog policy, secret/path checks, manifest, and checksums |
 | [`benchmark.yml`](.github/workflows/benchmark.yml) | Repeated commands and timing artifacts |
 | [`docker-publish.yml`](.github/workflows/docker-publish.yml) | Multi-architecture Docker Hub publishing |
 | [`npm-publish.yml`](.github/workflows/npm-publish.yml) | npm package validation and publication |
@@ -94,6 +96,36 @@ For a stable tag such as `v1.2.0`, include a `## [1.2.0]` section in `CHANGELOG.
 
 See [Release guide](docs/RELEASES.md) for the full contract and dry-run behavior.
 
+## Source-only Release example
+
+Use `source-release.yml` when the deliverable is the source snapshot itself, not compiled binaries. This workflow does not build or test the project; run CI before tagging it.
+
+~~~yaml
+name: Source Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  source:
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@main
+    with:
+      # Keep this aligned with the ref in `uses` (pin both to the same SHA/tag in production).
+      pipeline-ref: main
+      changelog-path: CHANGELOG.md
+      changelog-missing-policy: fail
+      release-notes-mode: section
+      changelog-asset-mode: archive-and-asset
+      source-archive-name: "{repository}-{tag}-source.zip"
+      source-submodules: fail-if-present
+~~~
+
+The default archive is built from files tracked by the exact tag commit, contains one top-level directory, and excludes `.git` metadata and workspace-only files. The release bundle includes `manifest.json` and `SHA256SUMS`. See [Source Release contract](docs/SOURCE-RELEASES.md) for changelog modes, exclusions, submodules, Gitleaks allowlists, and security behavior.
+
 ## Benchmarks
 
 Use `benchmark.yml` to run a command multiple times. It uploads raw per-iteration logs, `iterations.csv`, `summary.csv`, and runner environment information. Supported categories are `micro`, `throughput`, `latency`, `memory`, `startup`, `scalability`, `regression`, and `size`.
@@ -120,7 +152,7 @@ Run the repository checks locally:
 make check
 ~~~
 
-The main workflow runs the same documentation/workflow checks. The release smoke workflow prepares notes, tests/builds its catalog archive, assembles artifacts, and verifies checksums, but skips public release creation.
+The main workflows run the same documentation/workflow checks. `github-release-smoke.yml` exercises the build-release bundle; `source-release-smoke.yml` runs the source archive contract tests, Gitleaks scan, ZIP validation, manifest, and checksums. Both skip public release creation.
 
 Contribution instructions are in [CONTRIBUTING.md](CONTRIBUTING.md). The repository flow is defined in [`.gix/config`](.gix/config), and its project structure rules are in [`psx.yml`](psx.yml).
 

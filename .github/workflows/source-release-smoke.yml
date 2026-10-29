@@ -1,0 +1,45 @@
+name: Source Release Smoke Test
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "CHANGELOG.md"
+      - "Makefile"
+      - "README.md"
+      - "scripts/**"
+      - "tests/**"
+      - "docs/SOURCE-RELEASES.md"
+      - "docs/SOURCE-RELEASE-DECISIONS.md"
+      - ".github/workflows/source-release.yml"
+      - ".github/workflows/source-release-smoke.yml"
+      - ".github/workflows/docs-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    name: Source release contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run repository checks and source release tests
+        run: make check
+
+  source-release:
+    name: Build and verify source archive without publishing
+    uses: ./.github/workflows/source-release.yml
+    with:
+      pipeline-ref: ${{ github.ref_name }}
+      dry-run: true
+      changelog-path: CHANGELOG.md
+      changelog-missing-policy: fail
+      release-notes-mode: section
+      changelog-asset-mode: archive-and-asset
+      source-archive-name: "{repository}-{tag}-source.zip"
+      source-submodules: fail-if-present

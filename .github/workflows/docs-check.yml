@@ -19,10 +19,16 @@ jobs:
             !node_modules
       - name: Validate GitHub Actions syntax and expressions
         uses: reviewdog/action-actionlint@v1
-      - name: Check common project documents
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Check common project documents and repository contracts
         shell: bash
         run: |
           test -s README.md
           test -s LICENSE
           test -s CHANGELOG.md
+          test -s docs/SOURCE-RELEASES.md
+          test -s docs/SOURCE-RELEASE-DECISIONS.md
+          make check
           git diff --check

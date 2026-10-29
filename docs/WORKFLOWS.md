@@ -14,6 +14,10 @@ Use .github/workflows/benchmark.yml for repeated performance commands. It preser
 
 Use .github/workflows/release.yml for tag-driven multi-OS/multi-architecture packaging, validation against CHANGELOG.md, changelog-derived release notes, per-target artifact uploads, checksums, and publishing. .github/workflows/github-release-smoke.yml exercises test/build/artifact collection in dry-run mode without publishing.
 
+## Source-only GitHub Release
+
+Use `.github/workflows/source-release.yml` when the intended deliverable is a source archive rather than compiled artifacts. The workflow validates the exact tag snapshot, changelog policy, file paths, symlinks, secrets, ZIP structure, and checksums before publishing. All inputs and security defaults are documented in [Source Release contract](SOURCE-RELEASES.md). The local `source-release-smoke.yml` exercises this path without creating a public release.
+
 ## Docker Hub
 
 Use .github/workflows/docker-publish.yml on version tags. Map your own Docker Hub account credentials to its username and token secrets. The reusable workflow builds Linux AMD64 and ARM64 images. For SDKs, publish a documented build environment; do not add a server entrypoint unless the project is actually a service.
