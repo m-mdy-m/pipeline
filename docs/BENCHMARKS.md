@@ -1,36 +1,33 @@
-# Benchmark methodology
+# Running benchmarks
 
-Use .github/workflows/benchmark.yml to run a command repeatedly and preserve its output. The benchmark runner records iteration timestamps and elapsed milliseconds, then emits a summary with minimum, median, mean, and maximum duration.
+A benchmark measures how long something takes or how much of a resource it uses. The reusable [benchmark workflow](../.github/workflows/benchmark.yml) runs a command several times and saves the results so you can inspect them later.
 
-## Categories
+## Basic idea
 
-- **Micro:** one operation repeated many times.
-- **Throughput:** report MiB/s, requests/s, or operations/s; include warm-up and sustained runs.
-- **Latency:** report p50/p90/p95/p99 where meaningful and distinguish cold start from steady state.
-- **Memory:** report peak RSS, allocation count/bytes, heap growth, and dataset size.
-- **Startup:** measure cold and warm process/build startup separately.
-- **Scalability:** vary workers, concurrency, and input size; record where throughput stops scaling.
-- **Regression:** compare the same runner class, commit base, compiler, flags, and fixture.
-- **Size:** report binary/package/image size and distinguish compressed from uncompressed size.
+1. Choose one command to measure.
+2. Choose a category, such as `startup`, `throughput`, `latency`, or `size`.
+3. Choose how many times to repeat it.
+4. Review both the summary and the raw logs.
 
-## Output artifacts
+The summary reports minimum, median, mean, and maximum time. The raw files help you understand unusual results.
 
-Each benchmark artifact contains:
+## What gets saved?
 
-- iterations.csv: category, iteration, start time, elapsed milliseconds, and exit code.
-- One log file per iteration, containing stdout and stderr.
-- summary.csv: run count and min/median/mean/max milliseconds.
-- environment.txt: runner OS/kernel, CPU details, and memory information.
-- Intermediate duration files used to calculate the summary.
+The workflow uploads an artifact containing:
 
-## Reproducibility rules
+- `iterations.csv`: one row for each run, including duration and exit code.
+- One log per run: the command's output.
+- `summary.csv`: a short timing summary.
+- Environment details: information about the runner.
 
-1. Never compare measurements from different runner types as if they were equivalent.
-2. Preserve raw output alongside any aggregate statistics.
-3. Use at least five repetitions for noisy workloads and more for stable statistics.
-4. Record command line, version, OS, CPU, RAM, compiler/runtime, input size, and cache state.
-5. Do not turn a noisy percentage change into a hard CI failure until thresholds have been calibrated.
+## Make results useful
 
-## This repository's self-benchmark
+- Compare runs on the same type of machine whenever possible.
+- Keep the command, input, compiler/runtime, and build settings the same.
+- Repeat noisy measurements more times.
+- Keep raw logs; averages alone can hide a failure or an unusual run.
+- Treat small differences carefully. Do not fail CI on a percentage threshold until you know normal variation.
 
-benchmark-self.yml runs two measurements when the workflow catalog changes: five repetitions of make check, and five samples of tracked file/byte and workflow counts. The first is a CI-maintenance timing, not a microbenchmark of application code. Check the run's artifacts for the raw logs and calculated timing summary.
+## This repository's benchmark
+
+The self-benchmark workflow measures the time needed to run this repository's checks and records the size of the tracked source and workflow catalog. It is a maintenance measurement, not a benchmark of an application.
