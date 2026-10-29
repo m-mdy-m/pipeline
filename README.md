@@ -159,3 +159,14 @@ Contribution instructions are in [CONTRIBUTING.md](CONTRIBUTING.md). The reposit
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+### Verify a downloaded Source Release
+
+Download the source ZIP, \`manifest.json\`, \`SHA256SUMS\`, and any other assets into the same folder, then run:
+
+~~~sh
+python scripts/tools/verify_source_release.py ./downloaded-release
+~~~
+
+The implementation is componentized under \`scripts/pipeline_release/\`; Source Release logs in GitHub Actions use the pinned \`m-mdy-m/log.c\` C logger.

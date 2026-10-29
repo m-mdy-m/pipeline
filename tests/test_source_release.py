@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -108,9 +109,11 @@ class ArchiveIntegrationTests(unittest.TestCase):
             commit = self.create_repo(root)
             script_dest = root / "scripts" / "source_release.py"
             script_dest.parent.mkdir(parents=True, exist_ok=True)
-            script_dest.write_bytes((Path(__file__).resolve().parents[1] / "scripts" / "source_release.py").read_bytes())
-            subprocess.run(["git", "add", "scripts/source_release.py"], cwd=root, check=True)
-            subprocess.run(["git", "commit", "-qm", "add helper"], cwd=root, check=True)
+            scripts_root = Path(__file__).resolve().parents[1] / "scripts"
+            script_dest.write_bytes((scripts_root / "source_release.py").read_bytes())
+            shutil.copytree(scripts_root / "pipeline_release", root / "scripts" / "pipeline_release")
+            subprocess.run(["git", "add", "scripts"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "add modular helper"], cwd=root, check=True)
             commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
             subprocess.run(["git", "tag", "-f", "v1.2.3", commit], cwd=root, check=True, stdout=subprocess.DEVNULL)
             outputs = root / "outputs.txt"

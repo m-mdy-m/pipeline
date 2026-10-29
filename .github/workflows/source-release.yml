@@ -113,10 +113,35 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Check out the pinned log.c C logger
+        uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/log.c
+          ref: c9b53e9901dc7103eb50be282ae055fe16e98f9a
+          path: .pipeline-log
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build log.c and configure native logger
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -fPIC -shared -Wall -Wextra -Wpedantic \
+            -I .pipeline-log/include .pipeline-log/src/log.c \
+            -o "$RUNNER_TEMP/libm-mdy-m-log.so" -pthread
+          test -s "$RUNNER_TEMP/libm-mdy-m-log.so"
+          echo "PIPELINE_LOG_LIBRARY=$RUNNER_TEMP/libm-mdy-m-log.so" >> "$GITHUB_ENV"
+          echo "PIPELINE_LOG_LEVEL=INFO" >> "$GITHUB_ENV"
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      - name: Verify native log.c logger initialization
+        shell: bash
+        run: |
+          PYTHONPATH=.pipeline/scripts python -c "from pipeline_release.logger import logger; assert logger.using_native_logger; logger.info('Native log.c logger ready', component='logger-smoke')"
 
       - name: Prepare exact source snapshot and release notes
         id: prepare
