@@ -12,7 +12,7 @@ from .logger import logger
 from .models import TreeEntry
 from .paths import any_pattern, safe_repo_path, validate_patterns, validate_symlinks
 from .release_meta import build_names, validate_tag_and_version
-from .runtime import DEFAULT_SENSITIVE_ALLOWLIST, DEFAULT_SENSITIVE_PATTERNS, RELEASE_ASSETS, REPORTS, SCAN_TREE, SOURCE_TREE, STATE, WORK_DIR
+from .runtime import DEFAULT_SENSITIVE_ALLOWLIST, DEFAULT_SENSITIVE_PATTERNS, REPO_ROOT, RELEASE_ASSETS, REPORTS, SCAN_TREE, SOURCE_TREE, STATE, WORK_DIR
 from .security import compose_gitleaks_config, validate_allowlist_path
 from .tools import atomic_write_text, env, git_output, parse_lines, run_git, write_outputs
 
