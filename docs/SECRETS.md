@@ -1,27 +1,44 @@
 # Secrets and permissions
 
-Configure registry credentials in GitHub Actions settings or organization secrets. Never commit tokens or include them in workflow YAML.
+Some workflows need passwords or tokens to publish a package or release. These are called **secrets**.
 
-| Reusable workflow secret input | Map from caller secret | Purpose |
-| --- | --- | --- |
-| release-token (optional) | RELEASE_TOKEN (optional) | Release creation; otherwise the caller's GITHUB_TOKEN is used |
-| username | DOCKERHUB_USERNAME | Docker Hub login |
-| token | DOCKERHUB_TOKEN | Docker Hub access token |
-| npm-token | NPM_TOKEN | npm publishing token |
+## Keep secrets private
 
-Example mapping for Docker Hub:
+- Add secrets in your repository or organization settings.
+- Never put a real token in a workflow file, source file, or commit.
+- Give each token only the access it needs.
+- Do not print secrets in logs.
 
-~~~yaml
+A workflow can pass a secret to a reusable workflow by mapping it under `secrets:`.
+
+## Which secret is used?
+
+| Workflow | Secret input | Common caller secret | What it is for |
+| --- | --- | --- | --- |
+| GitHub Release | `release-token` (optional) | `RELEASE_TOKEN` | Optional token for creating a release |
+| Docker Hub | `username` and `token` | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | Login before pushing an image |
+| npm | `npm-token` | `NPM_TOKEN` | Publish a package to npm |
+| Source release | `submodule-token` (optional) | `SUBMODULE_TOKEN` | Read private GitHub submodules when recursive mode is enabled |
+
+Example:
+
+```yaml
 jobs:
   publish:
     uses: m-mdy-m/pipeline/.github/workflows/docker-publish.yml@main
     with:
-      image: owner/project-sdk
-      dockerfile: Dockerfile.sdk
-      sdk-image: true
+      image: owner/project
     secrets:
       username: ${{ secrets.DOCKERHUB_USERNAME }}
       token: ${{ secrets.DOCKERHUB_TOKEN }}
-~~~
+```
 
-Keep permissions narrow. CI and benchmark callers typically need only contents: read; GitHub Release needs contents: write; Pages deployment needs pages: write and id-token: write. The calling workflow must grant the permissions required by a reusable workflow; a called workflow cannot elevate the caller's token permissions.
+## Permissions matter too
+
+The caller workflow must allow the permissions that a job needs. Use the smallest set possible:
+
+- Normal checks and benchmarks usually need `contents: read`.
+- Publishing a GitHub Release needs `contents: write`.
+- GitHub Pages deployment needs `pages: write` and `id-token: write`.
+
+A reusable workflow cannot grant its caller a higher permission level than the caller allows.
