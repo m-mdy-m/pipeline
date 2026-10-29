@@ -1,0 +1,21 @@
+# Copy this example into a consuming project's .github/workflows/docker-publish.yml.
+# It is intentionally kept outside .github/workflows/ so it cannot publish an image from this catalog by accident.
+name: Publish SDK image
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    uses: m-mdy-m/pipeline/.github/workflows/docker-publish.yml@main
+    with:
+      image: ${{ vars.DOCKERHUB_USERNAME }}/project-sdk
+      dockerfile: Dockerfile.sdk
+      sdk-image: true
+    secrets:
+      username: ${{ secrets.DOCKERHUB_USERNAME }}
+      token: ${{ secrets.DOCKERHUB_TOKEN }}

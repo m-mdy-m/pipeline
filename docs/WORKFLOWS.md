@@ -1,27 +1,29 @@
 # Workflow catalog
 
-All workflows are designed for `workflow_call`, with optional `workflow_dispatch` only where manual operation is safe.
+The files below are reusable workflows, intended to be invoked from a workflow in the consuming project. Use the smoke/test workflows in this repository to see those contracts exercised.
 
-## Quality / CI
+## CI and workflow validation
 
-Use `.github/workflows/ci.yml` for pull requests and pushes. Configure explicit build, test, lint, and quality commands for the language. A release must not be considered valid when the test command is omitted.
+Use .github/workflows/ci.yml for build, test, and optional lint commands. The caller chooses its toolchain and commands. .github/workflows/docs-check.yml checks Markdown and runs actionlint against executable workflow files.
 
 ## Benchmarks
 
-Use `.github/workflows/benchmark.yml` for performance runs. Run multiple iterations, retain raw output as an artifact, and compare like-for-like runners. Avoid failing a PR on noisy timing deltas unless thresholds have been calibrated.
+Use .github/workflows/benchmark.yml for repeated performance commands. It preserves raw output, environment information, iteration duration, and min/median/mean/max summary. .github/workflows/benchmark-self.yml benchmarks this repository's own validation and tracked source footprint.
 
 ## GitHub Release
 
-Use `.github/workflows/release.yml` to build a matrix of OS/architecture artifacts and generate SHA-256 checksums. Release publishing is triggered by a version tag and requires CI to pass first.
+Use .github/workflows/release.yml for tag-driven multi-OS/multi-architecture packaging, validation against CHANGELOG.md, changelog-derived release notes, per-target artifact uploads, checksums, and publishing. .github/workflows/github-release-smoke.yml exercises test/build/artifact collection in dry-run mode without publishing.
 
 ## Docker Hub
 
-Use `.github/workflows/docker-publish.yml`. For SDKs, publish a build/development environment image with documented usage; do not add a server entrypoint unless the project is actually a service.
+Use .github/workflows/docker-publish.yml on version tags. Map your own Docker Hub account credentials to its username and token secrets. The reusable workflow builds Linux AMD64 and ARM64 images. For SDKs, publish a documented build environment; do not add a server entrypoint unless the project is actually a service.
+
+A non-executable caller example is in examples/docker-sdk-caller.yml.
 
 ## npm
 
-Use `.github/workflows/npm-publish.yml`. Keep `NPM_TOKEN` in repository or organization Actions secrets and use trusted publishing when configured.
+Use .github/workflows/npm-publish.yml on version tags. Map the project's NPM_TOKEN to the npm-token secret. Stable versions are published with the default latest dist-tag; versions with a hyphen are published to next.
 
 ## GitHub Pages
 
-Use `.github/workflows/pages.yml` for static documentation and project websites. Keep build and deployment permissions separate; deploy only from the configured default branch.
+Use .github/workflows/pages.yml to build a static site and deploy it to GitHub Pages. It is reusable only; the consuming project controls when the deploy job is called and grants pages: write and id-token: write for deployment.

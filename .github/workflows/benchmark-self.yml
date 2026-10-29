@@ -1,0 +1,41 @@
+name: Pipeline Self Benchmark
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "Makefile"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - ".github/workflows/benchmark.yml"
+      - ".github/workflows/benchmark-self.yml"
+      - ".github/workflows/ci-main.yml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validation-runtime:
+    name: Repeated repository validation timing
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      category: startup
+      repetitions: 5
+      benchmark-command: make check
+
+  catalog-size:
+    name: Tracked source and workflow size
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      category: size
+      repetitions: 5
+      benchmark-command: |
+        printf 'tracked_files='
+        git ls-files | wc -l
+        printf 'tracked_bytes='
+        git ls-files -z | xargs -0 wc -c | awk 'END { print $1 }'
+        printf 'workflow_files='
+        find .github/workflows -maxdepth 1 -type f | wc -l

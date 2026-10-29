@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       benchmark-command:
-        description: "Command that runs benchmarks and writes results to benchmark-results/"
+        description: "Command to benchmark; stdout/stderr are retained for every iteration"
         required: true
         type: string
       category:
@@ -23,10 +23,6 @@ on:
         required: false
         type: string
         default: ""
-    outputs:
-      artifact-name:
-        description: "Name of the uploaded benchmark artifact"
-        value: ${{ jobs.benchmark.outputs.artifact-name }}
 
 permissions:
   contents: read
@@ -34,50 +30,81 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    outputs:
-      artifact-name: benchmark-results-${{ github.run_id }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
       - name: Validate benchmark configuration
         env:
           CATEGORY: ${{ inputs.category }}
           REPETITIONS: ${{ inputs.repetitions }}
+        shell: bash
         run: |
-          case "$CATEGORY" in micro|throughput|latency|memory|startup|scalability|regression|size) ;; *) echo "Unsupported category: $CATEGORY"; exit 2;; esac
-          test "$REPETITIONS" -ge 1
+          case "$CATEGORY" in
+            micro|throughput|latency|memory|startup|scalability|regression|size) ;;
+            *) echo "Unsupported category: $CATEGORY"; exit 2 ;;
+          esac
+          [[ "$REPETITIONS" =~ ^[0-9]+$ ]] && (( REPETITIONS >= 1 )) || {
+            echo "repetitions must be a positive integer" >&2
+            exit 2
+          }
+
       - name: Setup
         if: inputs.setup-command != ''
         run: ${{ inputs.setup-command }}
-      - name: Run repeated benchmark
+
+      - name: Run repeated benchmark and collect durations
         env:
           BENCHMARK_COMMAND: ${{ inputs.benchmark-command }}
           REPETITIONS: ${{ inputs.repetitions }}
           CATEGORY: ${{ inputs.category }}
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           mkdir -p benchmark-results
-          printf 'category,iteration,started_utc,exit_code\n' > benchmark-results/iterations.csv
+          printf 'category,iteration,started_utc,duration_ms,exit_code\\n' > benchmark-results/iterations.csv
+          : > benchmark-results/durations.txt
+
           i=1
           while [ "$i" -le "$REPETITIONS" ]; do
             started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            start_ns="$(date +%s%N)"
             set +e
-            sh -c "$BENCHMARK_COMMAND" 2>&1 | tee "benchmark-results/${CATEGORY}-${i}.log"
+            bash -o pipefail -c "$BENCHMARK_COMMAND" 2>&1 | tee "benchmark-results/${CATEGORY}-${i}.log"
             code=${PIPESTATUS[0]}
             set -e
-            printf '%s,%s,%s,%s\n' "$CATEGORY" "$i" "$started" "$code" >> benchmark-results/iterations.csv
+            end_ns="$(date +%s%N)"
+            duration_ms=$(((end_ns - start_ns) / 1000000))
+            printf '%s,%s,%s,%s,%s\\n' "$CATEGORY" "$i" "$started" "$duration_ms" "$code" >> benchmark-results/iterations.csv
+            printf '%s\\n' "$duration_ms" >> benchmark-results/durations.txt
             [ "$code" -eq 0 ] || exit "$code"
             i=$((i + 1))
           done
+
+          sort -n benchmark-results/durations.txt > benchmark-results/durations.sorted.txt
+          count="$(wc -l < benchmark-results/durations.sorted.txt | tr -d ' ')"
+          minimum="$(head -n 1 benchmark-results/durations.sorted.txt)"
+          maximum="$(tail -n 1 benchmark-results/durations.sorted.txt)"
+          median="$(awk -v n="$count" 'NR == int((n + 1) / 2) { a = $1 } NR == int((n + 2) / 2) { b = $1 } END { printf "%.2f", (a + b) / 2 }' benchmark-results/durations.sorted.txt)"
+          mean="$(awk -F, 'NR > 1 { sum += $4; n++ } END { if (n) printf "%.2f", sum / n; else print "0" }' benchmark-results/iterations.csv)"
+          printf 'category,runs,min_ms,median_ms,mean_ms,max_ms\\n%s,%s,%s,%s,%s,%s\\n' "$CATEGORY" "$count" "$minimum" "$median" "$mean" "$maximum" > benchmark-results/summary.csv
           uname -a > benchmark-results/environment.txt
           lscpu >> benchmark-results/environment.txt || true
           free -h >> benchmark-results/environment.txt || true
-      - uses: actions/upload-artifact@v4
+
+          echo "## Benchmark summary" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "| Category | Runs | Min ms | Median ms | Mean ms | Max ms |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|---:|---:|---:|---:|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| $CATEGORY | $count | $minimum | $median | $mean | $maximum |" >> "$GITHUB_STEP_SUMMARY"
+          cat benchmark-results/summary.csv
+
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: benchmark-results-${{ github.run_id }}
+          name: benchmark-results-${{ github.run_id }}-${{ inputs.category }}
           path: ${{ inputs.working-directory }}/benchmark-results/
           if-no-files-found: warn
           retention-days: 30

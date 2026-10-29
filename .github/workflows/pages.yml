@@ -18,7 +18,6 @@ on:
         required: false
         type: string
         default: "."
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,25 +26,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
         with:
-          node-version: ${{ inputs.node-version || '22' }}
+          node-version: ${{ inputs.node-version }}
       - name: Install dependencies
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ inputs.working-directory }}
         run: |
           if [ -f package-lock.json ]; then npm ci
           elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile
           elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile
           fi
       - name: Build site
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ inputs.working-directory }}
         run: ${{ inputs.build-command }}
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
-          path: ${{ inputs.output-directory || 'dist' }}
+          path: ${{ inputs.working-directory }}/${{ inputs.output-directory }}
   deploy:
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:

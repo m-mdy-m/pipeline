@@ -1,0 +1,28 @@
+name: GitHub Release Dry Run
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "CHANGELOG.md"
+      - "Makefile"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/github-release-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-dry-run:
+    name: Build and verify release assets without publishing
+    uses: ./.github/workflows/release.yml
+    with:
+      test-command: make check
+      build-command: |
+        mkdir -p dist
+        tar -czf dist/pipeline-workflow-catalog.tar.gz README.md LICENSE CHANGELOG.md .github/workflows docs psx.yml .gix/config
+      artifact-path: dist/*
+      working-directory: .
+      changelog-path: CHANGELOG.md
+      dry-run: true
