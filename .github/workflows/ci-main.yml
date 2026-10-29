@@ -1,0 +1,22 @@
+name: Repository CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    uses: ./.github/workflows/docs-check.yml
+  repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files and workflow inventory
+        run: make check
+      - name: Check whitespace
+        run: git diff --check
