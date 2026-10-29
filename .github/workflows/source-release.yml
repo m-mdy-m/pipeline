@@ -159,6 +159,10 @@ jobs:
         shell: bash
         env:
           SOURCE_WORK_DIR: ${{ runner.temp }}/pipeline-source-release
+          SOURCE_DRY_RUN: ${{ inputs.dry-run }}
+          SOURCE_ARCHIVE_NAME: ${{ inputs.source-archive-name }}
+          SOURCE_CHANGELOG_ASSET_MODE: ${{ inputs.changelog-asset-mode }}
+          SOURCE_SUBMODULES: ${{ inputs.source-submodules }}
           SOURCE_CHANGELOG_PATH: ${{ steps.prepare.outputs.changelog_path }}
           SOURCE_EXCLUDED_PATH_COUNT: ${{ steps.prepare.outputs.excluded_path_count }}
           SOURCE_OMITTED_SUBMODULE_COUNT: ${{ steps.prepare.outputs.omitted_submodule_count }}
