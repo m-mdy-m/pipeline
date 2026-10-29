@@ -53,7 +53,6 @@ def collect_entries(repo_dir: Path, commit: str, prefix: str, submodule_mode: st
         if submodule_mode == "omit":
             STATE.omitted_submodules.append(entry.path)
             logger.warning(f"Submodule content intentionally omitted: {entry.path}", component="submodules")
-            print(f"::warning title=Source Release::Submodule content intentionally omitted: {entry.path}")
             continue
         if submodule_mode != "recursive":
             raise ReleaseError(f"Unsupported source-submodules policy: {submodule_mode!r}")

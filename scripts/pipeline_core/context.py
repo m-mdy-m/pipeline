@@ -22,7 +22,7 @@ class PipelineContext:
     def from_environment(cls,environ:Mapping[str,str]|None=None,*,workspace:str|Path|None=None)->"PipelineContext":
         env=os.environ if environ is None else environ
         root=Path(workspace or env.get("PIPELINE_WORKSPACE") or Path.cwd()).expanduser().resolve()
-        provider=(env.get("PIPELINE_PROVIDER") or "local").lower().strip()
+        provider=(env.get("PIPELINE_PROVIDER") or "local").strip()
         if not _PROVIDER.fullmatch(provider): raise ValueError(f"Invalid PIPELINE_PROVIDER: {provider!r}")
         ad=env.get("PIPELINE_ARTIFACT_DIR","").strip(); out=env.get("PIPELINE_OUTPUT_FILE","").strip()
         return cls(provider,env.get("PIPELINE_EVENT",""),env.get("PIPELINE_REF_TYPE",""),env.get("PIPELINE_REF_NAME",""),
