@@ -1,0 +1,30 @@
+name: Benchmark Categories
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: "Benchmark category"
+        required: true
+        type: choice
+        options: [micro, throughput, latency, memory, startup, scalability, regression, size]
+      command:
+        description: "Benchmark command"
+        required: true
+        type: string
+      repetitions:
+        description: "Number of runs"
+        required: true
+        default: "5"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      category: ${{ inputs.category }}
+      benchmark-command: ${{ inputs.command }}
+      repetitions: ${{ fromJSON(inputs.repetitions) }}
