@@ -1,27 +1,23 @@
 # pipeline
 
-Reusable GitHub Actions workflows for building, testing, benchmarking, packaging, and publishing projects.
+[![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg)](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml)
+[![License](https://img.shields.io/github/license/m-mdy-m/pipeline)](LICENSE)
 
-![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg)
-![License](https://img.shields.io/github/license/m-mdy-m/pipeline)
+**pipeline** is a catalog of reusable GitHub Actions workflows for project CI, multi-platform releases, benchmarks, and publishing. A consuming repository adds a small caller workflow and supplies its own commands, build matrix, and secrets.
 
-## What it provides
+It is designed to reuse the same workflow logic across repositories without forcing every project into one language, build system, or release layout.
 
-| Workflow | Purpose |
-| --- | --- |
-| [ci.yml](.github/workflows/ci.yml) | Configurable build, test, lint, and toolchain setup |
-| [benchmark.yml](.github/workflows/benchmark.yml) | Repeatable measurements, timing summaries, environment details, and artifacts |
-| [release.yml](.github/workflows/release.yml) | Matrix builds, changelog-derived release notes, SHA-256 checksums, and GitHub Releases |
-| [docker-publish.yml](.github/workflows/docker-publish.yml) | Multi-architecture Docker Hub publishing |
-| [npm-publish.yml](.github/workflows/npm-publish.yml) | npm package validation and publishing |
-| [pages.yml](.github/workflows/pages.yml) | Static site build and GitHub Pages deployment |
-| [docs-check.yml](.github/workflows/docs-check.yml) | Markdown checks and GitHub Actions workflow linting |
+## Features
 
-The workflows are reusable: a project calls the workflow it needs and passes its own build/test commands and secrets. The catalog does not assume that every project uses the same language or build system.
+- **CI:** configure build, test, and optional lint commands for Go, Node.js, Rust, Python, C, or custom projects.
+- **GitHub Releases:** validate version tags, read release notes from `CHANGELOG.md`, run tests and builds for each matrix target, collect assets, generate SHA-256 checksums, and publish a release.
+- **Benchmarks:** repeat a command, retain per-run logs, capture runner details, and export min/median/mean/max timing summaries.
+- **Publishing:** reusable workflows for Docker Hub, npm, and GitHub Pages.
+- **Validation:** Markdown lint, GitHub Actions syntax/expression lint, and a repository workflow inventory check.
 
-## Quick start: CI
+## Quick start
 
-Add a caller workflow to your project:
+Create a workflow in the consuming project, for example `.github/workflows/ci.yml`:
 
 ~~~yaml
 name: CI
@@ -44,11 +40,27 @@ jobs:
       lint-command: go vet ./...
 ~~~
 
-Supported toolchain values are go, node, rust, python, c, and custom. Tool setup is provided for Go, Node.js, Rust, and Python; C/custom projects can use the runner's tools or add setup to their caller workflow.
+The supported `language` values are `go`, `node`, `rust`, `python`, `c`, and `custom`. Go, Node.js, Rust, and Python toolchain setup is provided; C and custom projects can prepare their own toolchain in the caller workflow.
 
-## Quick start: GitHub Release
+For production repositories, pin the reusable workflow to a reviewed commit SHA or a version tag instead of relying on a moving `@main` reference.
 
-The release workflow is designed around a version tag such as v1.2.0. It validates the tag, checks the matching CHANGELOG.md section for stable releases, runs tests and builds for every matrix entry, collects the artifacts, creates checksums, and publishes release notes with the assets attached.
+## Available workflows
+
+| Workflow | Purpose |
+| --- | --- |
+| [`ci.yml`](.github/workflows/ci.yml) | Build, test, and optional lint |
+| [`release.yml`](.github/workflows/release.yml) | Tag and changelog validation, matrix builds, checksums, and GitHub Releases |
+| [`benchmark.yml`](.github/workflows/benchmark.yml) | Repeated commands and timing artifacts |
+| [`docker-publish.yml`](.github/workflows/docker-publish.yml) | Multi-architecture Docker Hub publishing |
+| [`npm-publish.yml`](.github/workflows/npm-publish.yml) | npm package validation and publication |
+| [`pages.yml`](.github/workflows/pages.yml) | Static-site build and GitHub Pages deployment |
+| [`docs-check.yml`](.github/workflows/docs-check.yml) | Markdown and workflow validation |
+
+All entries above are reusable workflows. Repository-specific test and smoke workflows are kept separate so they do not accidentally publish packages, containers, or a public release.
+
+## GitHub Release example
+
+The release workflow follows the useful pattern from [`cdin-editor/kernel`](https://github.com/cdin-editor/kernel/blob/main/.github/workflows/release.yml): version tags drive the release, stable versions must have a matching `CHANGELOG.md` section, and each configured build target uploads its own assets.
 
 ~~~yaml
 name: Release
@@ -70,33 +82,47 @@ jobs:
       build-matrix-json: >-
         {"include":[
           {"id":"linux-x64","os":"ubuntu-24.04","artifact_path":"dist/*.tar.gz"},
+          {"id":"linux-arm64","os":"ubuntu-24.04-arm","artifact_path":"dist/*.tar.gz"},
           {"id":"macos-arm64","os":"macos-15","artifact_path":"dist/*.tar.gz"},
           {"id":"windows-x64","os":"windows-latest","artifact_path":"dist/*.zip"}
         ]}
 ~~~
 
-Each matrix entry can override build_command, test_command, and artifact_path. Use the [release guide](docs/RELEASES.md) for the full contract and CHANGELOG.md handling. The repository also has a release dry-run that exercises artifact creation without publishing a release.
+Each matrix target can override `build_command`, `test_command`, and `artifact_path`. Adjust commands and artifact patterns to match the consuming project's actual package layout. A failed test/build or missing artifact blocks publication.
 
-For production, pin @main to a reviewed commit SHA or a published tag.
+For a stable tag such as `v1.2.0`, include a `## [1.2.0]` section in `CHANGELOG.md`. The workflow marks supported prerelease tags as prereleases and never promotes them to the stable `latest` release.
+
+See [Release guide](docs/RELEASES.md) for the full contract and dry-run behavior.
 
 ## Benchmarks
 
-Use benchmark.yml to run a command several times. The uploaded artifact contains the raw logs, iteration CSV, timing summary, and runner environment information. Categories are micro, throughput, latency, memory, startup, scalability, regression, and size.
+Use `benchmark.yml` to run a command multiple times. It uploads raw per-iteration logs, `iterations.csv`, `summary.csv`, and runner environment information. Supported categories are `micro`, `throughput`, `latency`, `memory`, `startup`, `scalability`, `regression`, and `size`.
 
-This repository runs a small self-benchmark on workflow/catalog changes. It measures the repeatability and runtime of make check, plus tracked source-size metrics; these are pipeline-maintenance measurements, not claims about application performance. See [benchmark methodology](docs/BENCHMARKS.md).
+This repository also benchmarks itself: five runs of `make check` and five samples of tracked source size. Those are pipeline-maintenance measurements, not claims about application performance.
 
-## Publishing workflows
+See [Benchmark methodology](docs/BENCHMARKS.md) and the [latest benchmark run](https://github.com/m-mdy-m/pipeline/actions/workflows/benchmark-self.yml).
 
-- Docker Hub publishing expects the caller to map its own secrets to username and token; stable tags can publish latest, prerelease tags cannot.
-- npm publishing uses the npm-token secret and publishes prereleases to the next dist-tag.
-- Pages deployment is intentionally only a reusable workflow. Call it from a project workflow that controls when deployment is allowed.
-- Publishing permissions should be granted only to the relevant caller/job. Never store tokens in workflow files.
+## Publishing
 
-See [workflow documentation](docs/WORKFLOWS.md), [secrets and permissions](docs/SECRETS.md), and [contributing](CONTRIBUTING.md).
+- **Docker Hub:** configure the `username` and `token` reusable-workflow secrets. Stable tags may publish `latest`; prereleases must not.
+- **npm:** map the project's `NPM_TOKEN` to `npm-token`. Prereleases publish using the `next` dist-tag.
+- **GitHub Pages:** configure the build command and output directory, then grant `pages: write` and `id-token: write` in the calling workflow.
 
-## Repository flow
+Publishing workflows are not run against external registries from this repository's test runs. They are syntax-checked here; consumers must configure their own credentials and targets.
 
-The repository follows the branch convention configured in [.gix/config](.gix/config): main, develop, and short-lived topic branches. The project structure is also described in [psx.yml](psx.yml).
+See [Secrets and permissions](docs/SECRETS.md) and [Workflow catalog](docs/WORKFLOWS.md).
+
+## Development
+
+Run the repository checks locally:
+
+~~~sh
+make check
+~~~
+
+The main workflow runs the same documentation/workflow checks. The release smoke workflow prepares notes, tests/builds its catalog archive, assembles artifacts, and verifies checksums, but skips public release creation.
+
+Contribution instructions are in [CONTRIBUTING.md](CONTRIBUTING.md). The repository flow is defined in [`.gix/config`](.gix/config), and its project structure rules are in [`psx.yml`](psx.yml).
 
 ## License
 
