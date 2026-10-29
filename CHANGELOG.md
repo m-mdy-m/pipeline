@@ -6,6 +6,9 @@ Notable changes to this project are documented here. Stable release tags must ha
 
 ### Added
 
+- Modular Source Release implementation with reusable Git, path, changelog, security, archive, logger and bundle-verification components.
+- Native structured logging through the pinned m-mdy-m/log.c C ABI and a post-download asset verifier.
+
 - A dedicated source-only GitHub Release workflow with strict tag snapshots, configurable changelog handling, secret/path checks, and validated ZIP packaging.
 - Source release contract tests, a dry-run smoke workflow, machine-readable manifest, and SHA-256 checksum manifest.
 - Reusable GitHub Actions workflows for CI, benchmarks, release packaging, Docker Hub, npm, and GitHub Pages.
