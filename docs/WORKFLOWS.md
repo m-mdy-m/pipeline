@@ -1,33 +1,53 @@
-# Workflow catalog
+# Which workflow should I use?
 
-The files below are reusable workflows, intended to be invoked from a workflow in the consuming project. Use the smoke/test workflows in this repository to see those contracts exercised.
+A workflow is a set of steps that a CI service runs for you. The workflows in this repository are reusable: another repository can call them instead of copying all their steps.
 
-## CI and workflow validation
+## Pick a workflow
 
-Use .github/workflows/ci.yml for build, test, and optional lint commands. The caller chooses its toolchain and commands. .github/workflows/docs-check.yml checks Markdown and runs actionlint against executable workflow files.
+| If you want to… | Use |
+| --- | --- |
+| Build your project and run tests | [`ci.yml`](../.github/workflows/ci.yml) |
+| Publish compiled or packaged files for a version | [`release.yml`](../.github/workflows/release.yml) |
+| Publish a ZIP of the source code | [`source-release.yml`](../.github/workflows/source-release.yml) |
+| Run a command repeatedly and compare its timing | [`benchmark.yml`](../.github/workflows/benchmark.yml) |
+| Publish a Docker image | [`docker-publish.yml`](../.github/workflows/docker-publish.yml) |
+| Publish a package to npm | [`npm-publish.yml`](../.github/workflows/npm-publish.yml) |
+| Build and deploy a website | [`pages.yml`](../.github/workflows/pages.yml) |
+| Check Markdown and workflow syntax | [`docs-check.yml`](../.github/workflows/docs-check.yml) |
 
-## Benchmarks
+## How to call a reusable workflow
 
-Use .github/workflows/benchmark.yml for repeated performance commands. It preserves raw output, environment information, iteration duration, and min/median/mean/max summary. .github/workflows/benchmark-self.yml benchmarks this repository's own validation and tracked source footprint.
+Create a workflow in your own repository and call the shared workflow with `uses`. For example:
 
-## GitHub Release
+```yaml
+name: CI
 
-Use .github/workflows/release.yml for tag-driven multi-OS/multi-architecture packaging, validation against CHANGELOG.md, changelog-derived release notes, per-target artifact uploads, checksums, and publishing. .github/workflows/github-release-smoke.yml exercises test/build/artifact collection in dry-run mode without publishing.
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
 
-## Source-only GitHub Release
+permissions:
+  contents: read
 
-Use `.github/workflows/source-release.yml` when the intended deliverable is a source archive rather than compiled artifacts. The workflow validates the exact tag snapshot, changelog policy, file paths, symlinks, secrets, ZIP structure, and checksums before publishing. All inputs and security defaults are documented in [Source Release contract](SOURCE-RELEASES.md). The local `source-release-smoke.yml` exercises this path without creating a public release.
+jobs:
+  checks:
+    uses: m-mdy-m/pipeline/.github/workflows/ci.yml@main
+    with:
+      language: go
+      build-command: go build ./...
+      test-command: go test ./...
+      lint-command: go vet ./...
+```
 
-## Docker Hub
+The commands must match your project. The CI workflow supports `go`, `node`, `rust`, `python`, `c`, and `custom`. For production, pin `uses` to a reviewed release tag or commit SHA.
 
-Use .github/workflows/docker-publish.yml on version tags. Map your own Docker Hub account credentials to its username and token secrets. The reusable workflow builds Linux AMD64 and ARM64 images. For SDKs, publish a documented build environment; do not add a server entrypoint unless the project is actually a service.
+## How the workflows fit the new architecture
 
-A non-executable caller example is in examples/docker-sdk-caller.yml.
+The task engine lives in `scripts/pipeline_core/`; the task graph lives in `pipeline.toml`. Provider adapters translate environment details before the core runs. The workflows in `.github/workflows/` are GitHub-specific wrappers and can also upload artifacts or publish packages.
 
-## npm
+The repository's own CI runs the shared task graph through `scripts/providers/github/adapter.py`. The GitLab example in `.gitlab-ci.yml` calls the same task graph through the GitLab adapter.
 
-Use .github/workflows/npm-publish.yml on version tags. Map the project's NPM_TOKEN to the npm-token secret. Stable versions are published with the default latest dist-tag; versions with a hyphen are published to next.
+## Testing without publishing
 
-## GitHub Pages
-
-Use .github/workflows/pages.yml to build a static site and deploy it to GitHub Pages. It is reusable only; the consuming project controls when the deploy job is called and grants pages: write and id-token: write for deployment.
+The `github-release-smoke.yml` and `source-release-smoke.yml` workflows exercise release preparation and artifact checks without creating a public release. They are intended to catch problems before a real version tag is published.
