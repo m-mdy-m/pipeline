@@ -19,6 +19,8 @@ permissions:
 jobs:
   release-dry-run:
     name: Build and verify release assets without publishing
+    permissions:
+      contents: write
     uses: ./.github/workflows/release.yml
     with:
       pipeline-ref: ${{ github.sha }}

@@ -36,6 +36,8 @@ jobs:
 
   source-release:
     name: Build and verify source archive without publishing
+    permissions:
+      contents: write
     uses: ./.github/workflows/source-release.yml
     secrets:
       submodule-token: ${{ secrets.SUBMODULE_TOKEN }}
