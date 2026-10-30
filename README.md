@@ -98,4 +98,4 @@ Start with the [documentation index](docs/index.md), then read [Getting started]
 
 The task runner uses the Python standard library. Benchmark commands are executed through Bash. Git is used by the local provider to detect repository metadata when available. Source-release security scanning uses Docker and Gitleaks in the GitHub workflow.
 
-pipeline is released under the license in [LICENSE](LICENSE).
+pipeline is licensed under the Mozilla Public License 2.0 ([MPL-2.0](https://www.mozilla.org/MPL/2.0/)). The license applies on a file-by-file basis: modifications to Pipeline-covered files must remain available under MPL-2.0, while separate files in a larger work may use other licenses. See [LICENSE](LICENSE) for the full terms.
