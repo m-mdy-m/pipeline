@@ -180,10 +180,15 @@ jobs:
 
       - name: Run the caller's pipeline.toml task
         if: inputs.pipeline-task != ''
+        working-directory: ${{ github.workspace }}
         env:
           PYTHONPATH: ${{ github.workspace }}/.pipeline/src
           PIPELINE_TASK: ${{ inputs.pipeline-task }}
-        run: python -m pipeline.providers.github task "$PIPELINE_TASK" --json
+        run: >-
+          python -m pipeline.providers.github task "$PIPELINE_TASK"
+          --root "$GITHUB_WORKSPACE"
+          --config "$GITHUB_WORKSPACE/pipeline.toml"
+          --json
 
       - name: Build
         if: inputs.pipeline-task == ''
