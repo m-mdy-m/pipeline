@@ -315,7 +315,7 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          IDIOS_ARTIFACT_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
+          PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage artifact-test --working-directory "$RELEASE_WORKING_DIRECTORY"
 
       - name: Run artifact tests
@@ -327,7 +327,7 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          IDIOS_ARTIFACT_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
+          PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage artifact-test --working-directory "$RELEASE_WORKING_DIRECTORY"
 
       - name: Report release target outcome

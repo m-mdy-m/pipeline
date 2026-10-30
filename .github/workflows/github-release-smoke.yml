@@ -29,6 +29,8 @@ jobs:
         mkdir -p dist
         tar -czf dist/pipeline-workflow-catalog.tar.gz README.md LICENSE CHANGELOG.md .github/workflows docs psx.yml .gix/config
       artifact-path: dist/*
+      artifact-test-command: >-
+        python -c 'import os; from pathlib import Path; files = list(Path(os.environ["PIPELINE_ARTIFACT_TEST_DIR"]).glob("pipeline-workflow-catalog.tar.gz")); assert files and files[0].stat().st_size > 0, "downloaded release archive is missing or empty"'
       working-directory: .
       changelog-path: CHANGELOG.md
       dry-run: true
