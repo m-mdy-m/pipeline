@@ -255,15 +255,6 @@ jobs:
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
-      - name: Upload target diagnostics
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-diagnostics-${{ matrix.id }}
-          path: .pipeline-artifacts/release-targets/${{ matrix.id }}/
-          if-no-files-found: warn
-          retention-days: 14
-
       - name: Upload artifacts for this build target
         uses: actions/upload-artifact@v7
         with:
@@ -338,6 +329,15 @@ jobs:
           if [[ "$ARTIFACT_TEST_OUTCOME" == "failure" ]]; then
             echo "::error title=Downloaded release artifact test failed::${TARGET_ID}: the native artifact test failed; publishing is blocked."
           fi
+
+      - name: Upload target diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-diagnostics-${{ matrix.id }}
+          path: .pipeline-artifacts/release-targets/${{ matrix.id }}/
+          if-no-files-found: warn
+          retention-days: 14
 
   assemble:
     name: Assemble artifacts and verify checksums
