@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: "dist/*"
+      artifact-test-command:
+        description: "Optional command that tests the uploaded artifact on its native runner before release assembly"
+        required: false
+        type: string
+        default: ""
       working-directory:
         description: "Working directory for test and build commands"
         required: false
@@ -259,6 +264,7 @@ jobs:
           TARGET_REPORT_DIR: .pipeline-artifacts/release-targets
           TEST_OUTCOME: ${{ steps.test_msys2.outcome != 'skipped' && steps.test_msys2.outcome || steps.test_bash.outcome }}
           BUILD_OUTCOME: ${{ steps.build_msys2.outcome != 'skipped' && steps.build_msys2.outcome || steps.build_bash.outcome }}
+          ARTIFACT_TEST_OUTCOME: ${{ steps.artifact_test_windows.outcome != 'skipped' && steps.artifact_test_windows.outcome || steps.artifact_test_bash.outcome }}
         run: |
           set -u
           report="$TARGET_REPORT_DIR/$TARGET_ID/summary.md"
@@ -280,6 +286,9 @@ jobs:
           if [[ "$BUILD_OUTCOME" == "failure" ]]; then
             echo "::error title=Release target build failed::${TARGET_ID}: build stage failed; see the Build release artifacts step output."
           fi
+          if [[ "$ARTIFACT_TEST_OUTCOME" == "failure" ]]; then
+            echo "::error title=Downloaded release artifact test failed::${TARGET_ID}: the native artifact test failed; publishing is blocked."
+          fi
 
       - name: Upload target diagnostics
         if: always()
@@ -297,6 +306,31 @@ jobs:
           path: ${{ matrix.artifact_path || inputs.artifact-path }}
           if-no-files-found: error
           retention-days: 14
+
+      - name: Download artifacts for native verification
+        if: inputs.artifact-test-command != '' || matrix.artifact_test_command != null
+        uses: actions/download-artifact@v7
+        with:
+          name: release-build-${{ matrix.id }}
+          path: ${{ runner.temp }}/release-artifact-test
+
+      - name: Test downloaded release artifacts (Windows)
+        id: artifact_test_windows
+        if: runner.os == 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null)
+        shell: pwsh
+        env:
+          IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
+          TARGET_ID: ${{ matrix.id }}
+        run: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+
+      - name: Test downloaded release artifacts
+        id: artifact_test_bash
+        if: runner.os != 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null)
+        shell: bash
+        env:
+          IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
+          TARGET_ID: ${{ matrix.id }}
+        run: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
 
   assemble:
     name: Assemble artifacts and verify checksums
