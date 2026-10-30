@@ -10,6 +10,7 @@ from typing import Any
 from .archive import validate_zip
 from .errors import ReleaseError
 from ..common.logging import logger
+from ..common.hashing import sha256_file as _sha256
 
 
 def verify_bundle(directory: Path) -> dict[str, Any]:

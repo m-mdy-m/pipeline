@@ -79,7 +79,7 @@ jobs:
     with:
       image: local/pipeline-workflow-smoke
       context: examples/workflow-smoke/docker
-      dockerfile: Dockerfile
+      dockerfile: examples/workflow-smoke/docker/Dockerfile
       dry-run: true
 
   npm-dry-run:
