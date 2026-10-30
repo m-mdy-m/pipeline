@@ -22,7 +22,7 @@ jobs:
     name: Repeated shared-pipeline check timing
     uses: ./.github/workflows/benchmark.yml
     with:
-      pipeline-ref: \${{ github.sha }}
+      pipeline-ref: ${{ github.sha }}
       category: startup
       repetitions: 5
       benchmark-command: python scripts/providers/github/adapter.py task check --json
@@ -31,7 +31,7 @@ jobs:
     name: Tracked source and workflow size
     uses: ./.github/workflows/benchmark.yml
     with:
-      pipeline-ref: \${{ github.sha }}
+      pipeline-ref: ${{ github.sha }}
       category: size
       repetitions: 5
       benchmark-command: |

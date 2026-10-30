@@ -21,7 +21,7 @@ jobs:
     name: Build and verify release assets without publishing
     uses: ./.github/workflows/release.yml
     with:
-      pipeline-ref: \${{ github.sha }}
+      pipeline-ref: ${{ github.sha }}
       test-command: python scripts/providers/github/adapter.py task check --json
       build-command: |
         mkdir -p dist

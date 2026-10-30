@@ -30,7 +30,7 @@ jobs:
   benchmark:
     uses: ./.github/workflows/benchmark.yml
     with:
-      pipeline-ref: \${{ inputs.pipeline-ref }}
-      category: \${{ inputs.category }}
-      benchmark-command: \${{ inputs.command }}
-      repetitions: \${{ fromJSON(inputs.repetitions) }}
+      pipeline-ref: ${{ inputs.pipeline-ref }}
+      category: ${{ inputs.category }}
+      benchmark-command: ${{ inputs.command }}
+      repetitions: ${{ fromJSON(inputs.repetitions) }}

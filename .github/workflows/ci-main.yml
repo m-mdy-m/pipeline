@@ -27,7 +27,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pipeline-task-report-\${{ github.run_id }}
+          name: pipeline-task-report-${{ github.run_id }}
           path: .pipeline-artifacts/
           if-no-files-found: warn
           retention-days: 7

@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: m-mdy-m/pipeline
-          ref: \${{ inputs.pipeline-ref }}
+          ref: ${{ inputs.pipeline-ref }}
           path: .pipeline
           fetch-depth: 1
           persist-credentials: false
@@ -54,11 +54,11 @@ jobs:
 
       - name: Run the provider-neutral benchmark
         env:
-          BENCHMARK_COMMAND: \${{ inputs.benchmark-command }}
-          BENCHMARK_CATEGORY: \${{ inputs.category }}
-          BENCHMARK_REPETITIONS: \${{ inputs.repetitions }}
-          BENCHMARK_WORKING_DIRECTORY: \${{ inputs.working-directory }}
-          BENCHMARK_SETUP_COMMAND: \${{ inputs.setup-command }}
+          BENCHMARK_COMMAND: ${{ inputs.benchmark-command }}
+          BENCHMARK_CATEGORY: ${{ inputs.category }}
+          BENCHMARK_REPETITIONS: ${{ inputs.repetitions }}
+          BENCHMARK_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          BENCHMARK_SETUP_COMMAND: ${{ inputs.setup-command }}
         shell: bash
         run: |
           set -euo pipefail
@@ -67,14 +67,14 @@ jobs:
             --category "$BENCHMARK_CATEGORY" \
             --repetitions "$BENCHMARK_REPETITIONS" \
             --working-directory "$BENCHMARK_WORKING_DIRECTORY" \
-            --output-directory "$BENCHMARK_WORKING_DIRECTORY/benchmark-results" \
+            --output-directory benchmark-results \
             --setup-command "$BENCHMARK_SETUP_COMMAND"
 
       - name: Add the benchmark report to the run summary
         if: always()
         shell: bash
         env:
-          RESULTS_DIRECTORY: \${{ inputs.working-directory }}/benchmark-results
+          RESULTS_DIRECTORY: ${{ inputs.working-directory }}/benchmark-results
         run: |
           if [ -f "$RESULTS_DIRECTORY/summary.md" ]; then
             cat "$RESULTS_DIRECTORY/summary.md" >> "$GITHUB_STEP_SUMMARY"
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: benchmark-results-\${{ github.run_id }}-\${{ inputs.category }}
-          path: \${{ inputs.working-directory }}/benchmark-results/
+          name: benchmark-results-${{ github.run_id }}-${{ inputs.category }}
+          path: ${{ inputs.working-directory }}/benchmark-results/
           if-no-files-found: warn
           retention-days: 30

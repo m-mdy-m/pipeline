@@ -38,9 +38,9 @@ jobs:
     name: Build and verify source archive without publishing
     uses: ./.github/workflows/source-release.yml
     secrets:
-      submodule-token: \${{ secrets.SUBMODULE_TOKEN }}
+      submodule-token: ${{ secrets.SUBMODULE_TOKEN }}
     with:
-      pipeline-ref: \${{ github.sha }}
+      pipeline-ref: ${{ github.sha }}
       dry-run: true
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
