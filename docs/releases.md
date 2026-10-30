@@ -48,15 +48,35 @@ jobs:
     uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
     with:
       pipeline-ref: main
+      go-version: "1.25.0"
+      setup-node: true
+      node-version: "22"
+      pnpm-version: "9.15.4"
       test-command: make check
       build-command: make release
       artifact-path: dist/*
       changelog-path: CHANGELOG.md
 ~~~
 
-Replace the commands and artifact path with the ones used by your project. A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
+The reusable build workflow can provision optional toolchains before running the caller's test and build commands:
 
-For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix entry needs an `id` and an `os`. An entry can also override `test_command`, `build_command`, or `artifact_path`.
+- `go-version` installs the requested Go version when the release uses Go.
+- `setup-node`, `node-version`, and `pnpm-version` prepare Node.js and optionally activate pnpm for frontend builds.
+- Windows matrix entries may set `msys2_msystem` and `msys2_packages`. This installs the requested MSYS2 compiler environment without running a full in-place MSYS2 system upgrade, and runs that matrix entry's test/build commands with the MSYS2 shell.
+
+For example, add native Windows compiler environments to the matrix:
+
+~~~yaml
+build-matrix-json: >-
+  {"include":[
+    {"id":"windows-amd64","os":"windows-2025","msys2_msystem":"UCRT64","msys2_packages":"mingw-w64-ucrt-x86_64-gcc"},
+    {"id":"windows-arm64","os":"windows-11-arm","msys2_msystem":"CLANGARM64","msys2_packages":"mingw-w64-clang-aarch64-clang"}
+  ]}
+~~~
+
+For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix entry needs an `id` and an `os`. An entry can also override `test_command`, `build_command`, or `artifact_path`. Matrix-specific MSYS2 fields are optional and only needed when a Windows build requires an MSYS2 toolchain.
+
+A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
 ## Try a build release without publishing
 
