@@ -255,41 +255,6 @@ jobs:
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
-      - name: Report release target outcome
-        if: always()
-        shell: bash
-        env:
-          PYTHONPATH: .pipeline/src
-          TARGET_ID: ${{ matrix.id }}
-          TARGET_REPORT_DIR: .pipeline-artifacts/release-targets
-          TEST_OUTCOME: ${{ steps.test_msys2.outcome != 'skipped' && steps.test_msys2.outcome || steps.test_bash.outcome }}
-          BUILD_OUTCOME: ${{ steps.build_msys2.outcome != 'skipped' && steps.build_msys2.outcome || steps.build_bash.outcome }}
-          ARTIFACT_TEST_OUTCOME: ${{ steps.artifact_test_windows.outcome != 'skipped' && steps.artifact_test_windows.outcome || steps.artifact_test_bash.outcome }}
-        run: |
-          set -u
-          report="$TARGET_REPORT_DIR/$TARGET_ID/summary.md"
-          if command -v python >/dev/null 2>&1; then
-            python -m pipeline.release.target_cli report --target "$TARGET_ID" --report-directory "$TARGET_REPORT_DIR" --output "$report" || true
-          fi
-          {
-            if [[ -s "$report" ]]; then
-              cat "$report"
-              printf '\n'
-            else
-              printf '## Release target: %s\n\nNo source-level stage report was produced.\n\n' "$TARGET_ID"
-            fi
-            printf '### GitHub Actions stage outcomes\n\n| Stage | Outcome |\n| --- | --- |\n| Test | %s |\n| Build | %s |\n' "$TEST_OUTCOME" "$BUILD_OUTCOME"
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$TEST_OUTCOME" == "failure" ]]; then
-            echo "::error title=Release target test failed::${TARGET_ID}: test stage failed; see the Run tests step output."
-          fi
-          if [[ "$BUILD_OUTCOME" == "failure" ]]; then
-            echo "::error title=Release target build failed::${TARGET_ID}: build stage failed; see the Build release artifacts step output."
-          fi
-          if [[ "$ARTIFACT_TEST_OUTCOME" == "failure" ]]; then
-            echo "::error title=Downloaded release artifact test failed::${TARGET_ID}: the native artifact test failed; publishing is blocked."
-          fi
-
       - name: Upload target diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -331,6 +296,41 @@ jobs:
           IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
           TARGET_ID: ${{ matrix.id }}
         run: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+
+      - name: Report release target outcome
+        if: always()
+        shell: bash
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          TARGET_REPORT_DIR: .pipeline-artifacts/release-targets
+          TEST_OUTCOME: ${{ steps.test_msys2.outcome != 'skipped' && steps.test_msys2.outcome || steps.test_bash.outcome }}
+          BUILD_OUTCOME: ${{ steps.build_msys2.outcome != 'skipped' && steps.build_msys2.outcome || steps.build_bash.outcome }}
+          ARTIFACT_TEST_OUTCOME: ${{ steps.artifact_test_windows.outcome != 'skipped' && steps.artifact_test_windows.outcome || steps.artifact_test_bash.outcome }}
+        run: |
+          set -u
+          report="$TARGET_REPORT_DIR/$TARGET_ID/summary.md"
+          if command -v python >/dev/null 2>&1; then
+            python -m pipeline.release.target_cli report --target "$TARGET_ID" --report-directory "$TARGET_REPORT_DIR" --output "$report" || true
+          fi
+          {
+            if [[ -s "$report" ]]; then
+              cat "$report"
+              printf '\n'
+            else
+              printf '## Release target: %s\n\nNo source-level stage report was produced.\n\n' "$TARGET_ID"
+            fi
+            printf '### GitHub Actions stage outcomes\n\n| Stage | Outcome |\n| --- | --- |\n| Test | %s |\n| Build | %s |\n| Downloaded artifact test | %s |\n' "$TEST_OUTCOME" "$BUILD_OUTCOME" "$ARTIFACT_TEST_OUTCOME"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$TEST_OUTCOME" == "failure" ]]; then
+            echo "::error title=Release target test failed::${TARGET_ID}: test stage failed; see the Run tests step output."
+          fi
+          if [[ "$BUILD_OUTCOME" == "failure" ]]; then
+            echo "::error title=Release target build failed::${TARGET_ID}: build stage failed; see the Build release artifacts step output."
+          fi
+          if [[ "$ARTIFACT_TEST_OUTCOME" == "failure" ]]; then
+            echo "::error title=Downloaded release artifact test failed::${TARGET_ID}: the native artifact test failed; publishing is blocked."
+          fi
 
   assemble:
     name: Assemble artifacts and verify checksums
