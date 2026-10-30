@@ -71,7 +71,14 @@ def _resolve_shell(
 
     msystem = environment.get("MSYSTEM", "").upper()
     location = environment.get("MSYS2_LOCATION", "")
-    if not msystem or not location:
+    if not msystem:
+        return shell
+    if not location:
+        runner_temp = environment.get("RUNNER_TEMP", "")
+        default_location = Path(runner_temp) / "msys64" if runner_temp else None
+        if default_location is not None and default_location.is_dir():
+            location = str(default_location)
+    if not location:
         return shell
 
     prefix = {
