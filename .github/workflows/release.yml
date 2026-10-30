@@ -191,6 +191,7 @@ jobs:
           pnpm --version
 
       - name: Set up MSYS2 toolchain
+        id: msys2
         if: runner.os == 'Windows' && matrix.msys2_msystem != null
         uses: msys2/setup-msys2@v2
         with:
@@ -208,6 +209,7 @@ jobs:
         shell: msys2 {0}
         env:
           PYTHONPATH: .pipeline/src
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.test_command || inputs.test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -230,6 +232,7 @@ jobs:
         shell: msys2 {0}
         env:
           PYTHONPATH: .pipeline/src
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
