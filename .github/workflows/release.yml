@@ -118,8 +118,8 @@ jobs:
 
           metadata = json.loads(Path("release-preparation/release-meta.json").read_text(encoding="utf-8"))
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              output.write(f"version={metadata['version']}\\n")
-              output.write(f"prerelease={str(metadata['prerelease']).lower()}\\n")
+              output.write(f"version={metadata['version']}\n")
+              output.write(f"prerelease={str(metadata['prerelease']).lower()}\n")
           PY
 
       - uses: actions/upload-artifact@v7
@@ -177,12 +177,12 @@ jobs:
           install: ${{ matrix.msys2_packages }}
 
       - name: Run tests
-        shell: ${{ matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
+        shell: ${{ runner.os == 'Windows' && matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
         working-directory: ${{ inputs.working-directory }}
         run: ${{ matrix.test_command || inputs.test-command }}
 
       - name: Build release artifacts
-        shell: ${{ matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
+        shell: ${{ runner.os == 'Windows' && matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
         working-directory: ${{ inputs.working-directory }}
         run: ${{ matrix.build_command || inputs.build-command }}
 
