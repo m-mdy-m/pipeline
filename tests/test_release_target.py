@@ -11,12 +11,42 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from pipeline.release.target import (  # noqa: E402
     ReleaseTargetError,
+    _resolve_shell,
     execute_target_stage,
     render_target_summary,
 )
 
 
 class ReleaseTargetTests(unittest.TestCase):
+    def test_windows_msys2_uses_its_own_bash_not_system_wsl_bash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "msys64"
+            bash = root / "usr" / "bin" / "bash.exe"
+            bash.parent.mkdir(parents=True)
+            bash.write_bytes(b"test executable")
+            (root / "ucrt64" / "bin").mkdir(parents=True)
+
+            environment = {
+                "MSYSTEM": "UCRT64",
+                "MSYS2_LOCATION": str(root),
+                "PATH": "C:\\Windows\\System32",
+            }
+            resolved = _resolve_shell("bash", environment, platform_name="win32")
+
+            self.assertEqual(resolved, str(bash))
+            self.assertTrue(environment["PATH"].startswith(
+                f"{root / 'ucrt64' / 'bin'};{root / 'usr' / 'bin'};"
+            ))
+            self.assertEqual(environment["MSYS2_PATH_TYPE"], "inherit")
+            self.assertEqual(environment["CHERE_INVOKING"], "1")
+
+    def test_non_msys2_shell_resolution_is_unchanged(self) -> None:
+        environment = {"PATH": "/usr/bin"}
+        self.assertEqual(
+            _resolve_shell("bash", environment, platform_name="win32"),
+            "bash",
+        )
+
     def test_target_stage_streams_and_records_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
