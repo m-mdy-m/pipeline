@@ -50,6 +50,56 @@ def _write_chunk(chunk: bytes) -> None:
         sys.stdout.flush()
 
 
+
+def _resolve_shell(
+    shell: str,
+    environment: dict[str, str],
+    *,
+    platform_name: str | None = None,
+) -> str:
+    """Resolve Bash inside MSYS2 explicitly on Windows runners.
+
+    The setup-msys2 action exposes an msys2.cmd wrapper, but that wrapper
+    is not added to PATH as bash. A subprocess launched by Windows Python
+    can therefore resolve bash to the Windows WSL launcher in System32.
+    Use the Bash binary from the selected MSYS2 installation instead and add
+    its toolchain directories to the child process PATH.
+    """
+    current_platform = sys.platform if platform_name is None else platform_name
+    if current_platform != "win32" or shell != "bash":
+        return shell
+
+    msystem = environment.get("MSYSTEM", "").upper()
+    location = environment.get("MSYS2_LOCATION", "")
+    if not msystem or not location:
+        return shell
+
+    prefix = {
+        "MSYS": "usr",
+        "MINGW32": "mingw32",
+        "MINGW64": "mingw64",
+        "UCRT64": "ucrt64",
+        "CLANG64": "clang64",
+        "CLANGARM64": "clangarm64",
+    }.get(msystem)
+    if prefix is None:
+        raise ReleaseTargetError(f"Unsupported MSYS2 environment: {msystem!r}")
+
+    root = Path(location).expanduser()
+    bash = root / "usr" / "bin" / "bash.exe"
+    if not bash.is_file():
+        raise ReleaseTargetError(f"MSYS2 Bash was not found at the configured location: {bash}")
+
+    path_entries = [str(root / prefix / "bin"), str(root / "usr" / "bin")]
+    existing_path = environment.get("PATH", "")
+    if existing_path:
+        path_entries.append(existing_path)
+    environment["PATH"] = ";".join(path_entries)
+    environment["MSYS2_PATH_TYPE"] = "inherit"
+    environment["CHERE_INVOKING"] = "1"
+    return str(bash)
+
+
 def execute_target_stage(
     *,
     target: str,
@@ -88,12 +138,14 @@ def execute_target_stage(
 
     exit_code = 127
     error = ""
-    argv = [shell, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command]
+    environment = os.environ.copy()
     try:
+        resolved_shell = _resolve_shell(shell, environment)
+        argv = [resolved_shell, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command]
         process = subprocess.Popen(
             argv,
             cwd=cwd,
-            env=os.environ.copy(),
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
