@@ -10,6 +10,15 @@ permissions:
   contents: read
 
 jobs:
+  reusable-task-graph:
+    name: Verify reusable pipeline.toml execution
+    uses: ./.github/workflows/ci.yml
+    with:
+      language: python
+      python-version: "3.12"
+      pipeline-task: check
+      pipeline-ref: main
+
   docs:
     uses: ./.github/workflows/docs-check.yml
   repository:
