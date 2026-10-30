@@ -25,7 +25,7 @@ The workflow does not publish a release from a normal branch push. To publish ve
 From a checkout that contains the release commit:
 
 ~~~sh
-git tag -a v1.1.1 -m "pipeline 1.0.0"
+git tag -a v1.1.1 -m "pipeline 1.1.1"
 git push origin v1.1.1
 ~~~
 
@@ -103,7 +103,7 @@ Tags use this format:
 Before creating a stable tag, add a matching heading to the changelog:
 
 ~~~markdown
-## [1.0.0] - 2026-10-30
+## [1.1.1] - 2026-10-30
 
 ### Added
 

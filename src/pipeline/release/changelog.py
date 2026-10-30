@@ -84,7 +84,8 @@ def extract_unreleased_section(changelog: str, path: str) -> str:
             end = idx
             break
     section = "\n".join(lines[start:end]).strip()
-    if not section:
+    body_lines = [line for line in lines[start + 1:end] if line.strip()]
+    if not any(not re.match(r"^\s{0,3}#{1,6}\s+", line) for line in body_lines):
         raise ReleaseError(f"The Unreleased section in '{path}' is empty")
     return section + "\n"
 
@@ -132,7 +133,7 @@ def extract_dry_run_section(changelog: str, path: str) -> str:
     newest first) as the informational dry-run notes.
     """
     unreleased_count = sum(
-        bool(re.match(r"^\\s{0,3}(#{1,6})\\s+\\[?Unreleased\\]?\\s*$", line, re.IGNORECASE))
+        bool(re.match(r"^\s{0,3}(#{1,6})\s+\[?Unreleased\]?\s*$", line, re.IGNORECASE))
         for line in changelog.splitlines()
     )
     if unreleased_count:

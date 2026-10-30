@@ -42,29 +42,51 @@ class ChangelogTests(unittest.TestCase):
             sr.extract_version_section("## [Unreleased]\n- draft\n", "1.2.3", "CHANGELOG")
 
     def test_dry_run_prefers_unreleased_section(self) -> None:
-        body = (
-            "# Changelog\\n\\n"
-            "## [Unreleased]\\n\\n### Added\\n- Draft change\\n\\n"
-            "## [1.1.0] - 2026-10-30\\n\\n### Added\\n- Published change\\n"
-        )
+        body = """# Changelog
+
+## [Unreleased]
+
+### Added
+- Draft change
+
+## [1.1.0] - 2026-10-30
+
+### Added
+- Published change
+"""
         section = sr.extract_dry_run_section(body, "CHANGELOG.md")
         self.assertIn("- Draft change", section)
         self.assertNotIn("- Published change", section)
 
     def test_dry_run_falls_back_to_newest_version_without_unreleased(self) -> None:
-        body = (
-            "# Changelog\\n\\n"
-            "## [1.1.0] - 2026-10-30\\n\\n### Fixed\\n- Latest fix\\n\\n"
-            "## [1.0.0] - 2026-10-29\\n\\n### Added\\n- Older feature\\n"
-        )
+        body = """# Changelog
+
+## [1.1.0] - 2026-10-30
+
+### Fixed
+- Latest fix
+
+## [1.0.0] - 2026-10-29
+
+### Added
+- Older feature
+"""
         self.assertEqual(
             sr.extract_dry_run_section(body, "CHANGELOG.md"),
-            "## [1.1.0] - 2026-10-30\\n\\n### Fixed\\n- Latest fix\\n",
+            "## [1.1.0] - 2026-10-30\n\n### Fixed\n- Latest fix\n",
         )
 
     def test_dry_run_does_not_hide_duplicate_or_empty_unreleased_sections(self) -> None:
-        duplicate = "## [Unreleased]\\n- one\\n## [Unreleased]\\n- two\\n"
-        empty = "## [Unreleased]\\n\\n## [1.1.0]\\n- released\\n"
+        duplicate = """## [Unreleased]
+- one
+## [Unreleased]
+- two
+"""
+        empty = """## [Unreleased]
+
+## [1.1.0]
+- released
+"""
         with self.assertRaises(sr.ReleaseError):
             sr.extract_dry_run_section(duplicate, "CHANGELOG.md")
         with self.assertRaises(sr.ReleaseError):
@@ -72,7 +94,7 @@ class ChangelogTests(unittest.TestCase):
 
     def test_dry_run_requires_a_release_or_unreleased_section(self) -> None:
         with self.assertRaises(sr.ReleaseError):
-            sr.extract_dry_run_section("# Changelog\\n\\nNo sections yet.\\n", "CHANGELOG.md")
+            sr.extract_dry_run_section("# Changelog\n\nNo sections yet.\n", "CHANGELOG.md")
 
     def test_changelog_autodetection_is_strict_and_rejects_symlinks(self) -> None:
         root = Path("/tmp/source-release-test")
