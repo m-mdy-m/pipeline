@@ -93,7 +93,6 @@ jobs:
       test-command: python -m unittest discover -s tests -v
 ~~~
 
-
 ### Run a caller's `pipeline.toml` from CI
 
 The reusable CI workflow can execute a task from the calling repository's root
