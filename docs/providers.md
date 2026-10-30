@@ -93,6 +93,34 @@ jobs:
       test-command: python -m unittest discover -s tests -v
 ~~~
 
+
+### Run a caller's `pipeline.toml` from CI
+
+The reusable CI workflow can execute a task from the calling repository's root
+`pipeline.toml` directly. Set `pipeline-task` instead of defining separate
+build and test shell commands. The workflow checks out the shared engine,
+prepares Python, and invokes the GitHub provider adapter; callers do not need a
+project-local wrapper script or a second copy of the task runner.
+
+For a mixed Go and Node.js project:
+
+~~~yaml
+jobs:
+  quality:
+    uses: m-mdy-m/pipeline/.github/workflows/ci.yml@main
+    with:
+      language: go
+      setup-node: true
+      pnpm-version: "9.15.4"
+      pipeline-task: ci
+      pipeline-ref: main
+~~~
+
+The task graph remains portable: the same file can be run locally with
+`pipeline run ci`, while GitHub Actions supplies the provider context through
+the reusable workflow. Existing callers that use `build-command` and
+`test-command` continue to work unchanged.
+
 The available workflows are:
 
 | Workflow | Purpose |
