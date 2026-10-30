@@ -39,13 +39,31 @@ jobs:
         env:
           GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
           SCAN_PATH: ${{ inputs.scan-path }}
+          REPORT_DIRECTORY: ${{ runner.temp }}/gitleaks-report
         shell: bash
         run: |
           set -euo pipefail
           SCAN_PATH="$(realpath "$SCAN_PATH")"
+          mkdir -p "$REPORT_DIRECTORY"
           docker pull "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}"
           docker run --rm --network none --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=64m --env HOME=/tmp \
             --mount "type=bind,source=${SCAN_PATH},target=/scan,readonly" \
+            --mount "type=bind,source=${REPORT_DIRECTORY},target=/report" \
             "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}" \
-            dir --redact --no-banner --exit-code 1 /scan
+            dir --redact --no-banner --exit-code 1 \
+            --report-format json --report-path /report/findings.json /scan
+
+      - name: Summarize redacted finding metadata
+        if: always()
+        env:
+          REPORT_DIRECTORY: ${{ runner.temp }}/gitleaks-report
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$REPORT_DIRECTORY/findings.json"
+          if [ ! -s "$REPORT" ]; then
+            echo "Gitleaks did not produce a findings report."
+            exit 0
+          fi
+          jq -r '.[] | "Gitleaks: (.RuleID) in (.File):(.StartLine) — (.Description)"' "$REPORT"
