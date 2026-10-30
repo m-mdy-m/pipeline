@@ -146,6 +146,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check out the shared release target runner
+        uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/pipeline
+          ref: ${{ inputs.pipeline-ref }}
+          path: .pipeline
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Start release target
+        shell: bash
+        env:
+          TARGET_ID: ${{ matrix.id }}
+        run: |
+          printf '[%s] Starting release target %s on %s/%s\n' "$(date -u +%FT%TZ)" "$TARGET_ID" "$RUNNER_OS" "$RUNNER_ARCH"
+
       - name: Set up Go
         if: inputs.go-version != ''
         uses: actions/setup-go@v7
@@ -180,30 +200,91 @@ jobs:
           install: ${{ matrix.msys2_packages }}
 
       # Keep runner-context checks in step-level if conditions. The runner context
-      # is not available while evaluating the shell property.
+      # is not available while evaluating the shell property. The shared src runner
+      # streams child stdout/stderr as it is produced and writes a stage report.
       - name: Run tests (MSYS2)
+        id: test_msys2
         if: runner.os == 'Windows' && matrix.msys2_msystem != null
         shell: msys2 {0}
-        working-directory: ${{ inputs.working-directory }}
-        run: ${{ matrix.test_command || inputs.test-command }}
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.test_command || inputs.test-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage test --working-directory "$RELEASE_WORKING_DIRECTORY"
 
       - name: Run tests
+        id: test_bash
         if: runner.os != 'Windows' || matrix.msys2_msystem == null
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
-        run: ${{ matrix.test_command || inputs.test-command }}
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.test_command || inputs.test-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage test --working-directory "$RELEASE_WORKING_DIRECTORY"
 
       - name: Build release artifacts (MSYS2)
+        id: build_msys2
         if: runner.os == 'Windows' && matrix.msys2_msystem != null
         shell: msys2 {0}
-        working-directory: ${{ inputs.working-directory }}
-        run: ${{ matrix.build_command || inputs.build-command }}
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
       - name: Build release artifacts
+        id: build_bash
         if: runner.os != 'Windows' || matrix.msys2_msystem == null
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
-        run: ${{ matrix.build_command || inputs.build-command }}
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
+
+      - name: Report release target outcome
+        if: always()
+        shell: bash
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          TARGET_REPORT_DIR: .pipeline-artifacts/release-targets
+          TEST_OUTCOME: ${{ steps.test_msys2.outcome != 'skipped' && steps.test_msys2.outcome || steps.test_bash.outcome }}
+          BUILD_OUTCOME: ${{ steps.build_msys2.outcome != 'skipped' && steps.build_msys2.outcome || steps.build_bash.outcome }}
+        run: |
+          set -u
+          report="$TARGET_REPORT_DIR/$TARGET_ID/summary.md"
+          if command -v python >/dev/null 2>&1; then
+            python -m pipeline.release.target_cli report --target "$TARGET_ID" --report-directory "$TARGET_REPORT_DIR" --output "$report" || true
+          fi
+          {
+            if [[ -s "$report" ]]; then
+              cat "$report"
+              printf '\n'
+            else
+              printf '## Release target: %s\n\nNo source-level stage report was produced.\n\n' "$TARGET_ID"
+            fi
+            printf '### GitHub Actions stage outcomes\n\n| Stage | Outcome |\n| --- | --- |\n| Test | %s |\n| Build | %s |\n' "$TEST_OUTCOME" "$BUILD_OUTCOME"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$TEST_OUTCOME" == "failure" ]]; then
+            echo "::error title=Release target test failed::${TARGET_ID}: test stage failed; see the Run tests step output."
+          fi
+          if [[ "$BUILD_OUTCOME" == "failure" ]]; then
+            echo "::error title=Release target build failed::${TARGET_ID}: build stage failed; see the Build release artifacts step output."
+          fi
+
+      - name: Upload target diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-diagnostics-${{ matrix.id }}
+          path: .pipeline-artifacts/release-targets/${{ matrix.id }}/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload artifacts for this build target
         uses: actions/upload-artifact@v7
