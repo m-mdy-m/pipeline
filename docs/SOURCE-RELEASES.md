@@ -1,19 +1,19 @@
 # Publishing a source ZIP
 
-A source release shares the files needed to read or build a project, without building a separate binary for each operating system.
+A source release shares the files needed to read or build a project. It does not compile binaries for different operating systems.
 
 Use [`source-release.yml`](../.github/workflows/source-release.yml) for this. Use [Build releases](RELEASES.md) when you need compiled or packaged output.
 
 ## Quick start
 
-Add a workflow like this to the project you want to release:
+Add a workflow to the project you want to release:
 
-```yaml
+~~~yaml
 name: Source Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -25,40 +25,42 @@ jobs:
       pipeline-ref: main
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
-      source-archive-name: '{repository}-{tag}-source.zip'
+      source-archive-name: "{repository}-{tag}-source.zip"
       source-submodules: fail-if-present
-```
+~~~
 
-For a real project, pin the workflow to a reviewed version tag or commit SHA. Set `pipeline-ref` to the same version so the helper code and workflow stay in sync.
+For production, pin the workflow to a reviewed version tag or commit SHA. Set `pipeline-ref` to the same value so the workflow and helper code stay aligned.
 
 ## What happens?
 
-The workflow takes the exact files tracked by the version tag, then checks and packages them. It creates a ZIP with one top-level project folder, a file manifest, and SHA-256 checksums. It also scans the files that will be published for secrets and rejects unsafe paths or invalid ZIP entries.
+The workflow checks out the exact commit named by the tag. The shared code in `scripts/pipeline_release/` reads the tracked files, applies path and secret checks, builds the ZIP, and verifies its contents.
+
+The GitHub workflow supplies the provider context, runs the secret scanner, uploads the prepared bundle, and publishes the GitHub Release. The shared source packaging rules do not depend on GitHub Actions.
 
 It does **not** run your project's build or test commands. Use the build-release workflow for that.
 
 ## Important settings
 
-| Input | What it means |
+| Input | Meaning |
 | --- | --- |
-| `changelog-path` | The changelog file to use. If empty, the workflow searches a small list of known names and requires one clear match. |
-| `changelog-missing-policy` | `fail` stops if the changelog is missing or empty; `warn` allows the release to continue when the rules permit it. |
+| `changelog-path` | Explicit tracked changelog file. When empty, the helper looks for one unambiguous supported candidate. |
+| `changelog-missing-policy` | `fail` stops when the changelog is missing or empty; `warn` allows omission when the other rules permit it. |
 | `release-notes-mode` | Use the current version section, the full changelog, or a separate text file. |
-| `changelog-asset-mode` | Choose whether the changelog is only used for notes, included as a release asset, or both. |
+| `changelog-asset-mode` | Choose whether the changelog is only used for notes, included as an asset, or both. |
 | `source-archive-name` | ZIP filename template. Supports `{repository}`, `{tag}`, and `{version}`. |
-| `source-submodules` | Choose `fail-if-present`, `recursive`, or `omit`. Submodules are never handled silently. |
-| `source-exclude-patterns` | Optional newline-separated patterns for files to leave out. Excluded files are listed in the logs. |
-| `source-sensitive-path-patterns` | Add extra file-path patterns that should be treated as sensitive. Built-in checks always remain active. |
-| `source-sensitive-allowlist-patterns` | Explicit exceptions to the path check. These do not bypass secret scanning. |
-| `source-gitleaks-allowlist-path` | Optional tracked TOML file containing approved Gitleaks allowlist entries. It cannot turn off the scanner. |
-| `dry-run` | Builds and checks the archive but does not publish a public GitHub Release. |
+| `source-submodules` | Choose `fail-if-present`, `recursive`, or `omit`. |
+| `source-exclude-patterns` | Optional newline-separated patterns for files to leave out. Excluded paths are listed in the logs. |
+| `source-sensitive-path-patterns` | Extra path patterns that should be treated as sensitive. Built-in checks remain active. |
+| `source-sensitive-allowlist-patterns` | Explicit path-pattern exceptions. These do not bypass secret scanning. |
+| `source-gitleaks-allowlist-path` | Optional tracked TOML file containing approved Gitleaks allowlist entries. |
+| `dry-run` | Build and verify the archive without publishing a public GitHub Release. |
 
 ## Safety rules
 
-- The ZIP contains tracked files from the exact tag snapshot, including tracked hidden files. Untracked and ignored files are not included.
-- Git internals such as `.git` must not be present in the ZIP.
-- Secret findings and unsafe paths stop publication unless a permitted, explicit exception applies.
-- The ZIP is checked for invalid paths, path traversal, duplicate entries, and file corruption.
+- Only tracked files from the exact tagged commit are included. Untracked and ignored files are not included.
+- Git internals such as `.git` must not appear in the ZIP.
+- Secret findings, unsafe paths, and invalid ZIP entries stop publication.
 - Submodule behavior must be chosen explicitly.
+- Exclusions are shown in the logs so that omitted files are not hidden.
 
 Run a dry-run before publishing changes to your release settings. The repository's smoke workflow tests this path without creating a public release.

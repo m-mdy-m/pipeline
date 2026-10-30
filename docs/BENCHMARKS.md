@@ -1,33 +1,59 @@
 # Running benchmarks
 
-A benchmark measures how long something takes or how much of a resource it uses. The reusable [benchmark workflow](../.github/workflows/benchmark.yml) runs a command several times and saves the results so you can inspect them later.
+The shared benchmark runner measures a command several times and saves the raw output and timing data. The same script can run locally or inside a CI workflow.
 
-## Basic idea
+## Run it locally
 
-1. Choose one command to measure.
-2. Choose a category, such as `startup`, `throughput`, `latency`, or `size`.
-3. Choose how many times to repeat it.
-4. Review both the summary and the raw logs.
+From the repository root, run:
 
-The summary reports minimum, median, mean, and maximum time. The raw files help you understand unusual results.
+~~~sh
+python scripts/benchmark.py \
+  --command "python -m unittest discover -s tests" \
+  --category startup \
+  --repetitions 5 \
+  --working-directory . \
+  --output-directory benchmark-results
+~~~
 
-## What gets saved?
+The command is executed by Bash. An optional `--setup-command` can prepare files or build the program before timing begins. Setup time is not included in the measured runs.
 
-The workflow uploads an artifact containing:
+Supported categories are `micro`, `throughput`, `latency`, `memory`, `startup`, `scalability`, `regression`, and `size`. A run must complete successfully for the benchmark command to return success.
 
-- `iterations.csv`: one row for each run, including duration and exit code.
-- One log per run: the command's output.
-- `summary.csv`: a short timing summary.
-- Environment details: information about the runner.
+## Use the reusable workflow
 
-## Make results useful
+A caller workflow can run the same script on a GitHub-hosted runner:
 
-- Compare runs on the same type of machine whenever possible.
-- Keep the command, input, compiler/runtime, and build settings the same.
-- Repeat noisy measurements more times.
-- Keep raw logs; averages alone can hide a failure or an unusual run.
-- Treat small differences carefully. Do not fail CI on a percentage threshold until you know normal variation.
+~~~yaml
+jobs:
+  benchmark:
+    uses: m-mdy-m/pipeline/.github/workflows/benchmark.yml@main
+    with:
+      pipeline-ref: main
+      category: startup
+      repetitions: 5
+      benchmark-command: python -m unittest discover -s tests
+~~~
 
-## This repository's benchmark
+Set `pipeline-ref` to the same reviewed tag or commit used by the `uses` reference. The project being measured and the helper scripts are checked out separately.
 
-The self-benchmark workflow measures the time needed to run this repository's checks and records the size of the tracked source and workflow catalog. It is a maintenance measurement, not a benchmark of an application.
+## Result files
+
+The runner creates a `benchmark-results/` directory containing:
+
+- `iterations.csv` — start time, duration, and exit code for every attempt.
+- `summary.csv` and `summary.json` — minimum, median, mean, maximum, and run count.
+- `summary.md` — a compact report suitable for a CI run summary.
+- `durations.txt` and `durations.sorted.txt` — raw and sorted timing values.
+- One `<category>-<number>.log` file for each measured run.
+- `setup.log` when a setup command is used.
+- `environment.txt` with operating system, machine, processor, CPU count, and Python version.
+
+The GitHub workflow uploads this directory as an artifact. The runner itself does not know how or where the artifact is stored.
+
+## Compare results carefully
+
+- Compare runs from the same machine class whenever possible.
+- Keep inputs, build flags, and runtime versions consistent.
+- Repeat noisy measurements more often.
+- Read the raw logs as well as the summary.
+- Treat small changes cautiously; a timing difference is not automatically a performance improvement.

@@ -1,28 +1,27 @@
 # Secrets and permissions
 
-Some workflows need passwords or tokens to publish a package or release. These are called **secrets**.
+Some workflows publish files to GitHub Releases, Docker Hub, or npm. These services require credentials called **secrets**. Keep those credentials in repository or organization settings, never in a workflow file or source code.
 
-## Keep secrets private
+## Safe handling
 
-- Add secrets in your repository or organization settings.
-- Never put a real token in a workflow file, source file, or commit.
-- Give each token only the access it needs.
-- Do not print secrets in logs.
-
-A workflow can pass a secret to a reusable workflow by mapping it under `secrets:`.
+- Give each token only the permissions it needs.
+- Never print a secret in a log.
+- Pass a secret only to the job that uses it.
+- Use the built-in repository token when it has enough access.
+- Review the permissions requested by the caller workflow as well as the reusable workflow.
 
 ## Which secret is used?
 
-| Workflow | Secret input | Common caller secret | What it is for |
+| Workflow | Secret input | Example caller secret | Purpose |
 | --- | --- | --- | --- |
-| GitHub Release | `release-token` (optional) | `RELEASE_TOKEN` | Optional token for creating a release |
-| Docker Hub | `username` and `token` | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | Login before pushing an image |
-| npm | `npm-token` | `NPM_TOKEN` | Publish a package to npm |
+| Build release | `release-token` (optional) | `RELEASE_TOKEN` | Optional token for publishing a GitHub Release |
+| Docker Hub | `username` and `token` | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | Authenticate before pushing an image |
+| npm | `npm-token` | `NPM_TOKEN` | Publish a package |
 | Source release | `submodule-token` (optional) | `SUBMODULE_TOKEN` | Read private GitHub submodules when recursive mode is enabled |
 
 Example:
 
-```yaml
+~~~yaml
 jobs:
   publish:
     uses: m-mdy-m/pipeline/.github/workflows/docker-publish.yml@main
@@ -31,14 +30,14 @@ jobs:
     secrets:
       username: ${{ secrets.DOCKERHUB_USERNAME }}
       token: ${{ secrets.DOCKERHUB_TOKEN }}
-```
+~~~
 
-## Permissions matter too
+## Choose the smallest permissions
 
-The caller workflow must allow the permissions that a job needs. Use the smallest set possible:
+The caller workflow must allow the permissions required by the reusable workflow. A called workflow cannot grant itself more access than the caller permits.
 
-- Normal checks and benchmarks usually need `contents: read`.
+- Checks and benchmarks normally need `contents: read`.
 - Publishing a GitHub Release needs `contents: write`.
 - GitHub Pages deployment needs `pages: write` and `id-token: write`.
 
-A reusable workflow cannot grant its caller a higher permission level than the caller allows.
+The reusable workflow's publishing job requests write access only for the step that publishes. Keep other jobs read-only.

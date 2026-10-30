@@ -3,6 +3,11 @@ name: GitHub Release
 on:
   workflow_call:
     inputs:
+      pipeline-ref:
+        description: "Version or commit of m-mdy-m/pipeline that provides the release helper"
+        required: false
+        type: string
+        default: main
       test-command:
         description: "Test command; every matrix target must pass before publishing"
         required: true
@@ -36,6 +41,10 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      release-token:
+        description: "Optional token used to publish the GitHub Release"
+        required: false
 
 permissions:
   contents: read
@@ -47,107 +56,66 @@ jobs:
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
+      version: \${{ steps.version.outputs.version }}
+      prerelease: \${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Validate release tag and read CHANGELOG.md
+      - name: Check out the shared release helper
+        uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/pipeline
+          ref: \${{ inputs.pipeline-ref }}
+          path: .pipeline
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Normalize the GitHub event context
+        run: python .pipeline/scripts/providers/github/adapter.py bootstrap
+
+      - name: Validate the ref and prepare release notes
         id: version
-        shell: bash
         env:
-          DRY_RUN: ${{ inputs.dry-run }}
-          CHANGELOG_PATH: ${{ inputs.changelog-path }}
+          CHANGELOG_PATH: \${{ inputs.changelog-path }}
+          DRY_RUN: \${{ inputs.dry-run }}
+        shell: bash
         run: |
           set -euo pipefail
-          test -f "$CHANGELOG_PATH" || { echo "Missing changelog: $CHANGELOG_PATH" >&2; exit 1; }
+          python .pipeline/scripts/build_release.py prepare \
+            --changelog "$CHANGELOG_PATH" \
+            --output-directory release-preparation \
+            --dry-run "$DRY_RUN"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-          if [[ "$DRY_RUN" == "true" && "$GITHUB_REF_TYPE" != "tag" ]]; then
-            version="0.0.0-dev.${GITHUB_SHA:0:7}"
-          else
-            [[ "$GITHUB_REF_TYPE" == "tag" ]] || {
-              echo "Release workflow requires a v* tag (or dry-run: true)." >&2
-              exit 1
-            }
-            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]] || {
-              echo "Unsupported release tag: $GITHUB_REF_NAME" >&2
-              echo "Use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-(alpha|beta|rc).N" >&2
-              exit 1
-            }
-            version="${GITHUB_REF_NAME#v}"
-          fi
-
-          prerelease=false
-          if [[ "$version" == *-* ]]; then prerelease=true; fi
-
-          heading="## [$version]"
-          if ! grep -Fq "$heading" "$CHANGELOG_PATH"; then
-            if [[ "$prerelease" == "false" && "$DRY_RUN" != "true" ]]; then
-              echo "CHANGELOG.md has no section for stable release $version" >&2
-              exit 1
-            fi
-
-            base_version="${version%%-*}"
-            base_heading="## [$base_version]"
-            if grep -Fq "$base_heading" "$CHANGELOG_PATH"; then
-              heading="$base_heading"
-            elif grep -Fq "## [Unreleased]" "$CHANGELOG_PATH"; then
-              heading="## [Unreleased]"
-            else
-              heading=""
-            fi
-          fi
-
-          if [[ -n "$heading" ]]; then
-            awk -v target="$heading" '
-              /^## \[/ {
-                if (found) exit
-                if (index($0, target) == 1) found = 1
-              }
-              found { print }
-            ' "$CHANGELOG_PATH" > release-notes.md
-          else
-            : > release-notes.md
-          fi
-
-          if [[ ! -s release-notes.md ]]; then
-            if [[ "$prerelease" == "false" && "$DRY_RUN" != "true" ]]; then
-              echo "No release notes found for $version" >&2
-              exit 1
-            fi
-            printf '## Development build %s\n\nSee [CHANGELOG.md](CHANGELOG.md) for changes.\n' "$version" > release-notes.md
-          fi
-
-          cat >> release-notes.md <<'NOTES'
-
-          ---
-
-          ## Assets
-
-          This release attaches the files produced by each configured build-matrix target and a SHA256SUMS file. Verify a downloaded file with sha256sum -c SHA256SUMS.
-          NOTES
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-          echo "Prepared release notes for $version (prerelease=$prerelease)"
-          cat release-notes.md
+          metadata = json.loads(Path("release-preparation/release-meta.json").read_text(encoding="utf-8"))
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"version={metadata['version']}\n")
+              output.write(f"prerelease={str(metadata['prerelease']).lower()}\n")
+          PY
 
       - uses: actions/upload-artifact@v7
         with:
           name: release-notes
-          path: release-notes.md
+          path: release-preparation/release-notes.md
           if-no-files-found: error
           retention-days: 3
 
   build:
-    name: Build / test ${{ matrix.id }}
+    name: Build / test \${{ matrix.id }}
     needs: prepare
-    runs-on: ${{ matrix.os }}
+    runs-on: \${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.build-matrix-json) }}
+      matrix: \${{ fromJSON(inputs.build-matrix-json) }}
     permissions:
       contents: read
     steps:
@@ -157,19 +125,19 @@ jobs:
 
       - name: Run tests
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
-        run: ${{ matrix.test_command || inputs.test-command }}
+        working-directory: \${{ inputs.working-directory }}
+        run: \${{ matrix.test_command || inputs.test-command }}
 
       - name: Build release artifacts
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
-        run: ${{ matrix.build_command || inputs.build-command }}
+        working-directory: \${{ inputs.working-directory }}
+        run: \${{ matrix.build_command || inputs.build-command }}
 
       - name: Upload artifacts for this build target
         uses: actions/upload-artifact@v7
         with:
-          name: release-build-${{ matrix.id }}
-          path: ${{ matrix.artifact_path || inputs.artifact-path }}
+          name: release-build-\${{ matrix.id }}
+          path: \${{ matrix.artifact_path || inputs.artifact-path }}
           if-no-files-found: error
           retention-days: 14
 
@@ -191,18 +159,21 @@ jobs:
           path: release-assets
           merge-multiple: false
 
-      - name: Verify assets and generate SHA-256 checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          find release-assets -type f -print
-          asset_count="$(find release-assets -type f | wc -l)"
-          test "$asset_count" -gt 0 || { echo "No release artifacts were downloaded" >&2; exit 1; }
-          (
-            cd release-assets
-            find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
-          )
-          test -s release-assets/SHA256SUMS
+      - name: Check out the shared release helper
+        uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/pipeline
+          ref: \${{ inputs.pipeline-ref }}
+          path: .pipeline
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Generate checksums for the collected assets
+        run: python .pipeline/scripts/build_release.py assemble --assets-directory release-assets
 
       - uses: actions/upload-artifact@v7
         with:
@@ -229,11 +200,11 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ needs.prepare.outputs.version }}
+          tag_name: \${{ github.ref_name }}
+          name: Release \${{ needs.prepare.outputs.version }}
           body_path: release-notes/release-notes.md
           files: |
             release-assets/**/*
-          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
-          make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}
-          token: ${{ secrets.release-token || github.token }}
+          prerelease: \${{ needs.prepare.outputs.prerelease == 'true' }}
+          make_latest: \${{ needs.prepare.outputs.prerelease != 'true' }}
+          token: \${{ secrets.release-token || github.token }}

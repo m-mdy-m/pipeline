@@ -3,6 +3,11 @@ name: Benchmark Categories
 on:
   workflow_dispatch:
     inputs:
+      pipeline-ref:
+        description: "Version or commit of m-mdy-m/pipeline"
+        required: true
+        default: main
+        type: string
       category:
         description: "Benchmark category"
         required: true
@@ -25,6 +30,7 @@ jobs:
   benchmark:
     uses: ./.github/workflows/benchmark.yml
     with:
-      category: ${{ inputs.category }}
-      benchmark-command: ${{ inputs.command }}
-      repetitions: ${{ fromJSON(inputs.repetitions) }}
+      pipeline-ref: \${{ inputs.pipeline-ref }}
+      category: \${{ inputs.category }}
+      benchmark-command: \${{ inputs.command }}
+      repetitions: \${{ fromJSON(inputs.repetitions) }}

@@ -21,7 +21,15 @@ jobs:
           python-version: "3.12"
       - name: Check required files and workflow inventory
         run: make docs-check workflow-inventory
-      - name: Execute shared task graph through GitHub provider adapter
+      - name: Execute the shared task graph through the GitHub adapter
         run: python scripts/providers/github/adapter.py task check --json --result .pipeline-artifacts/pipeline-result.json
+      - name: Upload the provider-neutral task report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pipeline-task-report-\${{ github.run_id }}
+          path: .pipeline-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Check whitespace
         run: git diff --check

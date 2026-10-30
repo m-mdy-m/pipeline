@@ -1,30 +1,30 @@
 # Publishing a build release
 
-Use [`release.yml`](../.github/workflows/release.yml) when your project needs to build files—such as binaries, archives, or packages—and attach them to a GitHub Release.
+Use [`release.yml`](../.github/workflows/release.yml) when a project needs to build binaries, archives, packages, or other downloadable files and attach them to a GitHub Release.
 
-If you only want to share the source code as a ZIP, use [Source releases](SOURCE-RELEASES.md) instead.
+Use [Source releases](SOURCE-RELEASES.md) when you only need a ZIP of the source code and do not need to build the project.
 
-## What the build release does
+## What happens?
 
-1. Checks the version tag.
-2. Checks that `CHANGELOG.md` contains a section for a stable release.
-3. Runs your test and build commands for each configured target.
-4. Collects the files produced by each target.
-5. Creates SHA-256 checksums and a release bundle.
-6. Publishes the files and release notes on GitHub, unless dry-run mode is enabled.
+1. The GitHub adapter normalizes the tag, commit, and repository context.
+2. The shared release helper validates the version and reads the matching changelog section.
+3. Each build-matrix target runs the project's test and build commands.
+4. GitHub Actions collects the files produced by each target.
+5. The shared release helper creates a SHA-256 checksum list for the collected files.
+6. The GitHub workflow publishes the notes and files, unless dry-run mode is enabled.
 
-If a build target fails, the release does not continue to publishing.
+The version and changelog rules and checksum generation live in `scripts/pipeline_release/build.py`. The workflow only coordinates runners, transfers artifacts, and publishes the GitHub Release.
 
 ## Example
 
-Create a workflow in your project:
+Create a workflow in the project you want to release:
 
-```yaml
+~~~yaml
 name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -33,6 +33,7 @@ jobs:
   release:
     uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
     with:
+      pipeline-ref: main
       test-command: make check
       build-command: make release
       artifact-path: dist/*
@@ -41,21 +42,27 @@ jobs:
           {"id":"linux-x64","os":"ubuntu-24.04","artifact_path":"dist/*.tar.gz"},
           {"id":"windows-x64","os":"windows-latest","artifact_path":"dist/*.zip"}
         ]}
-```
+~~~
 
-Change the commands, operating systems, and artifact paths to match your project. Every target needs an `id` and an `os`. See the workflow file for all available inputs.
+Every matrix entry needs an `id` and an `os`. You can override the test command, build command, or artifact path for an individual target. See the workflow file for all available inputs.
 
-## Version tags and changelog
+For production, pin the `uses` reference to a reviewed release tag or commit SHA. Set `pipeline-ref` to that same value; this keeps the workflow and its helper scripts on the same version.
 
-Use tags like `v1.2.3` for stable releases or `v1.2.3-rc.1` for a release candidate. For a stable release, add a matching heading to `CHANGELOG.md` before creating the tag:
+## Tags and changelog
 
-```markdown
+Use tags such as `v1.2.3` for stable releases and `v1.2.3-rc.1` for release candidates. The supported prerelease labels are `alpha`, `beta`, and `rc`.
+
+A real stable release requires a matching section in the changelog before the tag is published:
+
+~~~markdown
 ## [1.2.3]
 
 ### Added
 - Describe the new feature.
-```
+~~~
 
-## Try it safely
+Prerelease notes use the matching version section when present. Otherwise, the helper can fall back to the matching stable section or `[Unreleased]`. A stable release without its version section is rejected.
 
-Set `dry-run: true` to test the release steps without creating a public GitHub Release. The repository's release smoke workflow uses this mode.
+## Test safely
+
+Set `dry-run: true` to prepare release notes, build all targets, collect artifacts, and generate checksums without creating a GitHub Release. The repository's release smoke workflow uses this mode.

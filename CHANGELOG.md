@@ -6,23 +6,14 @@ Notable changes to this project are documented here. Stable release tags must ha
 
 ### Added
 
-- Provider-neutral pipeline core with TOML task graph, normalized context, local artifacts and Local/GitHub/GitLab adapters.
-- Provider contract and integration tests for context isolation, dependencies, failure/timeout handling, CLI execution and artifact checksums.
-- Modular Source Release implementation with reusable Git, path, changelog, security, archive, logger and bundle-verification components.
-- Native structured logging through the pinned m-mdy-m/log.c C ABI and a post-download asset verifier.
-
-- A dedicated source-only GitHub Release workflow with strict tag snapshots, configurable changelog handling, secret/path checks, and validated ZIP packaging.
-- Source release contract tests, a dry-run smoke workflow, machine-readable manifest, and SHA-256 checksum manifest.
-- Reusable GitHub Actions workflows for CI, benchmarks, release packaging, Docker Hub, npm, and GitHub Pages.
-- Tag validation and release notes generated from this changelog.
-- A release dry-run that builds and verifies assets without publishing.
-- Timing summaries and environment metadata for repeated benchmarks.
-- Workflow syntax validation as part of repository CI.
-- Release smoke coverage for artifact bundle assembly and SHA-256 checksum generation.
+- Provider-neutral repeated benchmark runner with CSV, JSON, Markdown, raw logs, and environment reports.
+- Provider-neutral build-release helper for tag validation, changelog notes, and SHA-256 artifact manifests.
+- Unit tests for benchmark execution, release-note preparation, and checksum generation.
 
 ### Changed
 
-- README now documents concrete caller examples and workflow contracts.
-- Workflow inventory and validation now distinguish catalog checks from actual YAML/action syntax validation.
-- GitHub Actions updated to Node 24-compatible versions after actionlint exposed retired runtime references.
-- Benchmark CSV output now records distinct rows and valid min/median/mean/max summaries.
+- GitHub benchmark and build-release workflows now call shared scripts instead of reimplementing measurement, version parsing, changelog extraction, or checksum generation in YAML.
+- GitHub workflows now keep provider-only work such as runner setup, artifact transfer, and publishing separate from shared script behavior.
+- Workflow helper checkouts accept an explicit `pipeline-ref` so a reusable workflow and its scripts can be pinned to the same revision.
+- The main README and guides now explain the configuration, shared scripts, and provider-adapter boundary without a long repository map.
+- The task validation command now compiles the complete `scripts/` directory, and the test task covers all discovered unit and provider-contract tests.
