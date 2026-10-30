@@ -1,99 +1,59 @@
-# Run pipeline in different places
+# Providers and reusable GitHub workflows
 
-The same task file can be used from a terminal, GitHub Actions, or GitLab CI. The task runner does not need to know which service started it.
+The task engine reads one `pipeline.toml` file. A provider adapter translates the host's environment into the portable `PIPELINE_*` contract; the core does not need to know whether a task started locally, in GitHub Actions, or in GitLab CI.
 
-A provider adapter handles the difference. It reads the provider's environment variables, translates them into the common `PIPELINE_*` names, and starts the regular pipeline command.
+## Run locally
 
-## Run it on your computer
+Install the package with `python -m pip install -e .`, then run `pipeline run check --json`. The `pipeline-local` command also adds Git-derived branch, tag, commit, and repository information when available.
 
-Use the normal entry point:
+## Use the adapter from GitHub Actions
 
-~~~sh
-python scripts/pipeline.py run check --json
-~~~
-
-Or use the local adapter:
-
-~~~sh
-python scripts/providers/local/adapter.py run check --json
-~~~
-
-The local adapter uses Git to fill in the current commit, branch or exact tag, and repository name when that information is available. If the directory is not a Git checkout, it still runs with a local workspace.
-
-## Run it in GitHub Actions
-
-When the adapter is part of your checkout, the task command is:
+When this repository is checked out as part of the calling project, use:
 
 ~~~yaml
 - uses: actions/checkout@v7
 - uses: actions/setup-python@v7
   with:
     python-version: "3.12"
-- name: Run the task graph
-  run: python scripts/providers/github/adapter.py task check --json
+- name: Run the shared task graph
+  env:
+    PYTHONPATH: src
+  run: python -m pipeline.providers.github task check --json
 ~~~
 
-To use pipeline from another project, check out this repository as a helper directory. The task configuration is still read from the calling project's workspace:
+When pipeline is checked out as a helper directory, keep the caller project as the working directory and add the helper's `src` directory to `PYTHONPATH`:
 
 ~~~yaml
-name: Project checks
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: m-mdy-m/pipeline
-          ref: v1.0.0
-          path: .pipeline
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Run the caller project's tasks
-        run: python .pipeline/scripts/providers/github/adapter.py task check --json
+- uses: actions/checkout@v7
+- uses: actions/checkout@v7
+  with:
+    repository: m-mdy-m/pipeline
+    ref: main
+    path: .pipeline
+    persist-credentials: false
+- uses: actions/setup-python@v7
+  with:
+    python-version: "3.12"
+- name: Run the caller project's tasks
+  env:
+    PYTHONPATH: .pipeline/src
+  run: python -m pipeline.providers.github task check --json
 ~~~
 
-Replace `check` with the task you want to run. The helper checkout is pinned to `v1.0.0` in this example; use a reviewed tag or commit in your own workflow.
+For repeatable builds, replace `main` with a reviewed release tag or full commit SHA. The GitHub adapter also has a `bootstrap` mode that writes normalized context into `GITHUB_ENV` for later steps in the same job.
 
-The GitHub adapter also has a `bootstrap` command. It writes the normalized context to `GITHUB_ENV` so later steps in the same job can read `PIPELINE_*` values. Use `task` or `run` when you only need to execute pipeline immediately.
-
-## Run it in GitLab CI
-
-If pipeline is checked out inside the project, use:
+## Use the adapter from GitLab CI
 
 ~~~yaml
 image: python:3.12
 
 stages:
-  - test
+  - verify
 
 pipeline:
-  stage: test
+  stage: verify
   script:
-    - python scripts/providers/gitlab/adapter.py run check --json
-~~~
-
-If you keep pipeline in a separate helper directory, clone it before running the adapter:
-
-~~~yaml
-before_script:
-  - git clone --depth 1 --branch v1.0.0 https://github.com/m-mdy-m/pipeline.git .pipeline
-
-check:
-  image: python:3.12
-  script:
-    - python .pipeline/scripts/providers/gitlab/adapter.py run check --json
+    - PYTHONPATH=src python -m pipeline.providers.gitlab run check --json
   artifacts:
     when: always
     paths:
@@ -101,43 +61,59 @@ check:
     expire_in: 7 days
 ~~~
 
-The GitLab adapter reads values such as `CI_COMMIT_SHA`, `CI_COMMIT_TAG`, and `CI_PROJECT_PATH`. It does not use GitHub variables.
+For a separate helper checkout, clone pipeline into `.pipeline` and set `PYTHONPATH=.pipeline/src` before running `python -m pipeline.providers.gitlab`.
 
-## The shared environment
+## Shared provider context
 
-The adapters translate provider variables into a small set of common values:
-
-| Common value | What it describes |
+| Variable | Meaning |
 | --- | --- |
 | `PIPELINE_PROVIDER` | `local`, `github`, or `gitlab` |
 | `PIPELINE_EVENT` | Event that started the run, when known |
-| `PIPELINE_REF_TYPE` | `branch`, `tag`, or another provider ref type |
-| `PIPELINE_REF_NAME` | Name of the branch, tag, or ref |
+| `PIPELINE_REF_TYPE` | `branch`, `tag`, or provider ref type |
+| `PIPELINE_REF_NAME` | Branch, tag, or ref name |
 | `PIPELINE_SHA` | Commit checked out by the run |
 | `PIPELINE_REPOSITORY` | Repository name or path, when known |
-| `PIPELINE_WORKSPACE` | Project directory |
-| `PIPELINE_ARTIFACT_DIR` | Default directory for pipeline artifacts |
+| `PIPELINE_WORKSPACE` | Project working directory |
+| `PIPELINE_ARTIFACT_DIR` | Default artifact directory |
 | `PIPELINE_OUTPUT_FILE` | Provider output file, when available |
-| `PIPELINE_RUN_ID` | CI run or pipeline ID, when available |
-| `PIPELINE_RUN_ATTEMPT` | Retry or attempt number, when available |
+| `PIPELINE_RUN_ID` | CI run or pipeline identifier |
+| `PIPELINE_RUN_ATTEMPT` | Retry or attempt number |
 
-The core reads these common values. It does not read `GITHUB_*` or `CI_*` variables directly.
+## Reusable GitHub workflow catalog
 
-## Reusable GitHub workflows
+Call a workflow from the `jobs` section of a caller's workflow. For example:
 
-This repository also publishes ready-made GitHub Actions workflows. These are useful when a project wants a standard GitHub job without writing the setup steps itself.
+~~~yaml
+jobs:
+  checks:
+    uses: m-mdy-m/pipeline/.github/workflows/ci.yml@main
+    with:
+      language: python
+      build-command: python -m compileall -q src
+      test-command: python -m unittest discover -s tests -v
+~~~
 
-| Workflow | What it does |
+The available workflows are:
+
+| Workflow | Purpose |
 | --- | --- |
-| `ci.yml` | Prepares a Go, Node.js, Rust, Python, C, or custom environment, then runs the build, test, and optional lint commands supplied by the caller. |
-| `benchmark.yml` | Checks out the shared benchmark script, runs it, and uploads the result directory. |
-| `release.yml` | Builds for one or more targets, creates checksums, and publishes a GitHub Release. |
-| `source-release.yml` | Packages and checks the exact source snapshot from a tag. |
-| `docker-publish.yml` | Builds and publishes a multi-architecture Docker image. |
-| `npm-publish.yml` | Tests and publishes an npm package. |
-| `pages.yml` | Builds and deploys a GitHub Pages site. |
-| `docs-check.yml` | Checks Markdown and GitHub Actions workflow syntax. |
+| `ci.yml` | Build, test, and optional lint for Go, Node.js, Rust, Python, Java, .NET, C, or custom projects. |
+| `docs-check.yml` | Markdown lint and GitHub Actions syntax validation. |
+| `security-check.yml` | Gitleaks scan of a selected project directory. |
+| `benchmark.yml` | Repeated command timing and result artifact upload. |
+| `release.yml` | Matrix build/test, checksum assembly, and GitHub Release publishing. |
+| `source-release.yml` | Validated source ZIP from the exact tagged Git snapshot, with secret scanning. |
+| `docker-publish.yml` | Multi-platform Docker image build and optional push. |
+| `npm-publish.yml` | npm install, test, build, package check, and publish. |
+| `python-publish.yml` | Python sdist/wheel build, Twine validation, and PyPI publishing. |
+| `pages.yml` | Site build, Pages artifact upload, and optional deployment. |
 
-These reusable workflows are GitHub-specific by design. For example, GitHub owns the artifact upload and Release publishing steps. The scripts that measure commands or prepare release metadata remain separate and provider-neutral.
+The repository also has `reusable-smoke.yml`, a push/dispatch self-test that calls these reusable workflows with dry-run settings. It is a regular workflow for this repository, not a `workflow_call` endpoint for consumers.
 
-See [Releases](releases.md) for examples and the inputs each release workflow needs.
+### Dry-run behavior
+
+Use `dry-run: true` for `release.yml`, `source-release.yml`, `docker-publish.yml`, `npm-publish.yml`, `python-publish.yml`, or `pages.yml` to validate a build without making the corresponding release, registry publish, Docker push, or Pages deployment. The smoke workflow calls these reusable workflows with dry-run enabled. A dry run still executes the meaningful build and validation steps and can upload temporary workflow artifacts.
+
+### Pin helper workflows and scripts together
+
+`benchmark.yml`, `release.yml`, and `source-release.yml` check out this repository to use the helper package from `src/`. Set their `pipeline-ref` input to a tag or commit in `m-mdy-m/pipeline`. Do not pass a commit SHA from a different caller repository: that SHA will not identify a commit in the helper repository.

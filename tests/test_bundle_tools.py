@@ -9,10 +9,10 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from pipeline_release.errors import ReleaseError  # noqa: E402
-from pipeline_release.verify import verify_bundle  # noqa: E402
+from pipeline.release.errors import ReleaseError  # noqa: E402
+from pipeline.release.verify import verify_bundle  # noqa: E402
 
 
 def digest(path: Path) -> str:

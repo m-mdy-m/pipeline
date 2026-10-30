@@ -1,16 +1,16 @@
 from __future__ import annotations
 import json,os,subprocess,sys,tempfile,unittest
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1];SCRIPTS=ROOT/"scripts";sys.path.insert(0,str(SCRIPTS))
-from pipeline_core.artifacts import LocalArtifactStore
-from pipeline_core.config import PipelineConfig
-from pipeline_core.context import PipelineContext
-from pipeline_core.errors import ArtifactError,PipelineConfigError
-from pipeline_core.provider import ProviderAdapter
-from pipeline_core.runner import TaskRunner
-from providers.github.adapter import GitHubAdapter
-from providers.gitlab.adapter import GitLabAdapter
-from providers.local.adapter import LocalAdapter
+ROOT=Path(__file__).resolve().parents[1];SRC=ROOT/"src";sys.path.insert(0,str(SRC));os.environ["PYTHONPATH"]=str(SRC)+os.pathsep+os.environ.get("PYTHONPATH","")
+from pipeline.core.artifacts import LocalArtifactStore
+from pipeline.core.config import PipelineConfig
+from pipeline.core.context import PipelineContext
+from pipeline.core.errors import ArtifactError,PipelineConfigError
+from pipeline.core.provider import ProviderAdapter
+from pipeline.core.runner import TaskRunner
+from pipeline.providers.github.adapter import GitHubAdapter
+from pipeline.providers.gitlab.adapter import GitLabAdapter
+from pipeline.providers.local.adapter import LocalAdapter
 
 def write_config(root:Path,tasks:str)->Path:
     path=root/"pipeline.toml";path.write_text('schema_version = 1\n[project]\nname = "fixture"\n'+tasks,encoding="utf-8");return path
@@ -40,7 +40,7 @@ class ProviderTests(unittest.TestCase):
         v=GitLabAdapter().normalize_environment({"CI_PROJECT_DIR":str(ROOT),"CI_PROJECT_PATH":"group/project","CI_COMMIT_TAG":"v2.0.0","CI_COMMIT_SHA":"b"*40,"GITHUB_SHA":"wrong"})
         self.assertEqual((v["PIPELINE_PROVIDER"],v["PIPELINE_REF_TYPE"],v["PIPELINE_REF_NAME"],v["PIPELINE_SHA"]),("gitlab","tag","v2.0.0","b"*40))
     def test_business_logic_does_not_contain_provider_env_references(self):
-        for directory in (SCRIPTS/"pipeline_core",SCRIPTS/"pipeline_release"):
+        for directory in (SRC/"pipeline"/"core",SRC/"pipeline"/"release"):
             for path in directory.glob("*.py"):
                 content=path.read_text(encoding="utf-8")
                 with self.subTest(path=path.name):
@@ -58,9 +58,9 @@ class AdapterExecutionTests(unittest.TestCase):
                        "CI_PROJECT_PATH": "example/project", "GITHUB_SHA": "must-not-win"},
         }
         entrypoints = {
-            "local": SCRIPTS / "providers" / "local" / "adapter.py",
-            "github": SCRIPTS / "providers" / "github" / "adapter.py",
-            "gitlab": SCRIPTS / "providers" / "gitlab" / "adapter.py",
+            "local": "pipeline.providers.local",
+            "github": "pipeline.providers.github",
+            "gitlab": "pipeline.providers.gitlab",
         }
         for provider, values in cases.items():
             with self.subTest(provider=provider), tempfile.TemporaryDirectory() as tmp:
@@ -85,7 +85,7 @@ depends_on = ["prepare"]
                 else:
                     child_env["CI_PROJECT_DIR"] = str(root)
 
-                command = [sys.executable, str(entrypoints[provider])]
+                command = [sys.executable, "-m", entrypoints[provider]]
                 if provider == "github":
                     command += ["task", "verify"]
                 else:
@@ -168,6 +168,6 @@ command=["python","-c","from pathlib import Path; assert Path('result.txt').read
 depends_on=["emit"]
 """)
             result=root/"report.json";import subprocess
-            proc=subprocess.run([sys.executable,str(SCRIPTS/"pipeline.py"),"run","verify","--root",str(root),"--config",str(cfg),"--result",str(result),"--json"],cwd=ROOT,capture_output=True,text=True)
+            proc=subprocess.run([sys.executable,"-m","pipeline","run","verify","--root",str(root),"--config",str(cfg),"--result",str(result),"--json"],cwd=ROOT,capture_output=True,text=True)
             self.assertEqual(proc.returncode,0,proc.stdout+proc.stderr);self.assertTrue(json.loads(result.read_text())["succeeded"])
 if __name__=="__main__":unittest.main(verbosity=2)

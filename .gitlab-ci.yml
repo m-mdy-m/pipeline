@@ -5,7 +5,7 @@ default:
 pipeline:check:
   stage: verify
   script:
-    - python scripts/providers/gitlab/adapter.py run check --json --result .pipeline-artifacts/pipeline-result.json
+    - PYTHONPATH=src python -m pipeline.providers.gitlab run check --json --result .pipeline-artifacts/pipeline-result.json
   artifacts:
     when: always
     paths:

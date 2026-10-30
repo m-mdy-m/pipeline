@@ -16,7 +16,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       pipeline-ref: ${{ github.ref_name }}
-      test-command: python scripts/providers/github/adapter.py task check --json
+      test-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
       build-command: |
         set -euo pipefail
         mkdir -p dist

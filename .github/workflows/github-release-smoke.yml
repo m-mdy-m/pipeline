@@ -7,7 +7,7 @@ on:
       - "CHANGELOG.md"
       - "Makefile"
       - "pipeline.toml"
-      - "scripts/**"
+      - "src/**"
       - "tests/**"
       - ".github/workflows/release.yml"
       - ".github/workflows/github-release-smoke.yml"
@@ -24,7 +24,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       pipeline-ref: ${{ github.sha }}
-      test-command: python scripts/providers/github/adapter.py task check --json
+      test-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
       build-command: |
         mkdir -p dist
         tar -czf dist/pipeline-workflow-catalog.tar.gz README.md LICENSE CHANGELOG.md .github/workflows docs psx.yml .gix/config

@@ -1,61 +1,58 @@
 # Development guide
 
-This guide is for someone changing pipeline itself. It explains the local test loop, where behavior belongs, and what to check before opening a pull request.
+This guide explains the local test loop, where behavior belongs, and what to check before contributing.
 
 ## Before you change code
 
-Use Python 3.12, Git, and Make. From the repository root, run the current checks:
+Use Python 3.11 or newer, Git, and Make. From the repository root, run:
 
 ~~~sh
 make check
 ~~~
 
-If Make is not available:
+Without Make:
 
 ~~~sh
-python scripts/pipeline.py validate
-python -m unittest discover -s tests -p "test_*.py" -v
+PYTHONPATH=src python -m pipeline validate
+PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 ~~~
 
-The test suite includes configuration and task-runner tests, local/GitHub/GitLab adapter tests, benchmark tests, source-release tests, and build-release tests.
+The test suite covers configuration, task execution, all provider adapters, shared helpers, benchmarks, release preparation, source packaging, and bundle verification.
 
 ## Where to put a change
 
 | Change | Put it here |
 | --- | --- |
-| Task configuration or task execution | `scripts/pipeline_core/` |
-| Shared benchmark behavior | `scripts/benchmark.py` |
-| Shared build-release behavior | `scripts/pipeline_release/build.py` |
-| Source-release behavior | `scripts/pipeline_release/` |
-| GitHub environment translation | `scripts/providers/github/` |
-| GitLab environment translation | `scripts/providers/gitlab/` |
-| Local environment translation | `scripts/providers/local/` |
-| GitHub scheduling, artifact upload, or publishing | `.github/workflows/` |
-| GitLab job scheduling | `.gitlab-ci.yml` |
-| User-facing explanation or example | `docs/` or `examples/` |
+| Task configuration or execution | `src/pipeline/core/` |
+| Shared cross-cutting helpers | `src/pipeline/common/` |
+| Safe reusable utilities | `src/pipeline/utils/` |
+| Provider environment translation | `src/pipeline/providers/` |
+| Benchmark behavior | `src/pipeline/benchmark/` |
+| Build and source release behavior | `src/pipeline/release/` |
+| GitHub job orchestration | `.github/workflows/` |
+| GitLab job orchestration | `.gitlab-ci.yml` |
+| User-facing explanations and examples | `docs/` and `examples/` |
 
-A useful rule is: if the behavior should be the same on a local machine, GitHub, and GitLab, it probably belongs in a shared script. If it uses a feature owned by one CI service, it belongs in that provider's workflow or configuration.
+A useful rule is: behavior shared between environments belongs in the Python package; service-specific scheduling, credentials, artifact actions, and publishing belong in the provider workflow.
 
 ## Run focused tests
 
-Run one test file while working on a small change:
-
 ~~~sh
-python -m unittest tests.test_pipeline_core -v
-python -m unittest tests.test_benchmark -v
-python -m unittest tests.test_build_release -v
+PYTHONPATH=src python -m unittest discover -s tests -p "test_pipeline_core.py" -v
+PYTHONPATH=src python -m unittest discover -s tests -p "test_benchmark.py" -v
+PYTHONPATH=src python -m unittest discover -s tests -p "test_build_release.py" -v
 ~~~
 
-Run the complete suite before committing:
+Run the complete test suite before committing:
 
 ~~~sh
-python -m unittest discover -s tests -p "test_*.py" -v
+PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 ~~~
 
-Compile the scripts separately when changing Python code:
+Compile the source package:
 
 ~~~sh
-python -m compileall -q scripts
+python -m compileall -q src
 ~~~
 
 ## Keep the examples honest
@@ -64,16 +61,14 @@ When a command, input, or workflow changes, update the matching guide and exampl
 
 ## Documentation and workflow checks
 
-`make check` verifies the required documentation files and workflow inventory, validates `pipeline.toml`, compiles the scripts, and runs the test suite.
-
-The GitHub documentation workflow additionally runs Markdown linting and `actionlint` against the Actions files. These are separate checks: a valid task configuration does not prove that a GitHub workflow is valid YAML or has valid expressions.
+`make check` verifies required documents and workflow inventory, validates `pipeline.toml`, compiles the source package, and runs the test suite. The reusable docs workflow also runs Markdown linting and `actionlint` against the Actions files.
 
 ## Before a release
 
 1. Update `CHANGELOG.md` with the exact version and date.
-2. Check that the release helper accepts the version and finds its changelog section.
+2. Check that the release helper accepts the version and finds the matching changelog section.
 3. Run `make check`.
-4. Review the build or source-release dry-run.
+4. Run the release dry-run workflow.
 5. Create and push the version tag only after the intended commit is ready.
 
-See [Releases](releases.md) for the tag format and release workflow.
+See [Releases](releases.md) for the tag format and workflow inputs.

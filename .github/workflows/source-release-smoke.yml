@@ -8,7 +8,7 @@ on:
       - "Makefile"
       - "README.md"
       - "pipeline.toml"
-      - "scripts/**"
+      - "src/**"
       - "tests/**"
       - "docs/SOURCE-RELEASES.md"
       - "docs/SOURCE-RELEASE-DECISIONS.md"
@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run the shared pipeline through the GitHub adapter
-        run: python scripts/providers/github/adapter.py task check --json
+        run: PYTHONPATH=src python -m pipeline.providers.github task check --json
 
   source-release:
     name: Build and verify source archive without publishing

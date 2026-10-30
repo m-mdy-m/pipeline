@@ -77,17 +77,20 @@ jobs:
           python-version: "3.12"
 
       - name: Normalize the GitHub event context
-        run: python .pipeline/scripts/providers/github/adapter.py bootstrap
+        env:
+          PYTHONPATH: .pipeline/src
+        run: python -m pipeline.providers.github bootstrap
 
       - name: Validate the ref and prepare release notes
         id: version
         env:
           CHANGELOG_PATH: ${{ inputs.changelog-path }}
           DRY_RUN: ${{ inputs.dry-run }}
+          PYTHONPATH: .pipeline/src
         shell: bash
         run: |
           set -euo pipefail
-          python .pipeline/scripts/build_release.py prepare \
+          python -m pipeline.release.build_cli prepare \
             --changelog "$CHANGELOG_PATH" \
             --output-directory release-preparation \
             --dry-run "$DRY_RUN"
@@ -173,7 +176,9 @@ jobs:
           python-version: "3.12"
 
       - name: Generate checksums for the collected assets
-        run: python .pipeline/scripts/build_release.py assemble --assets-directory release-assets
+        env:
+          PYTHONPATH: .pipeline/src
+        run: python -m pipeline.release.build_cli assemble --assets-directory release-assets
 
       - uses: actions/upload-artifact@v7
         with:

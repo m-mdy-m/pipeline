@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python .pipeline/scripts/benchmark.py \
+          PYTHONPATH="$GITHUB_WORKSPACE/.pipeline/src" python -m pipeline.benchmark \
             --command "$BENCHMARK_COMMAND" \
             --category "$BENCHMARK_CATEGORY" \
             --repetitions "$BENCHMARK_REPETITIONS" \

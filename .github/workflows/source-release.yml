@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pipeline-ref:
-        description: "Ref of m-mdy-m/pipeline containing the helper script; keep this aligned with the workflow ref"
+        description: "Ref of m-mdy-m/pipeline containing the helper package; keep this aligned with the workflow ref"
         required: false
         type: string
         default: main
@@ -143,13 +143,14 @@ jobs:
         env:
           SOURCE_SUBMODULE_TOKEN: ${{ secrets.submodule-token }}
           SOURCE_SUBMODULE_MODE: ${{ inputs.source-submodules }}
-        run: python .pipeline/scripts/providers/github/adapter.py bootstrap
+          PYTHONPATH: .pipeline/src
+        run: python -m pipeline.providers.github bootstrap
 
 
       - name: Verify native log.c logger initialization
         shell: bash
         run: |
-          PYTHONPATH=.pipeline/scripts python -c "from pipeline_release.logger import logger; assert logger.using_native_logger; logger.info('Native log.c logger ready', component='logger-smoke')"
+          PYTHONPATH=.pipeline/src python -c "from pipeline.common.logging import logger; assert logger.using_native_logger; logger.info('Native log.c logger ready', component='logger-smoke')"
 
       - name: Prepare exact source snapshot and release notes
         id: prepare
@@ -168,7 +169,8 @@ jobs:
           SOURCE_SENSITIVE_PATH_PATTERNS: ${{ inputs.source-sensitive-path-patterns }}
           SOURCE_SENSITIVE_ALLOWLIST_PATTERNS: ${{ inputs.source-sensitive-allowlist-patterns }}
           SOURCE_GITLEAKS_ALLOWLIST_PATH: ${{ inputs.source-gitleaks-allowlist-path }}
-        run: python .pipeline/scripts/source_release.py prepare
+          PYTHONPATH: .pipeline/src
+        run: python -m pipeline.release prepare
 
       - name: Scan the actual published source with Gitleaks
         shell: bash
@@ -198,7 +200,8 @@ jobs:
           SOURCE_CHANGELOG_PATH: ${{ steps.prepare.outputs.changelog_path }}
           SOURCE_EXCLUDED_PATH_COUNT: ${{ steps.prepare.outputs.excluded_path_count }}
           SOURCE_OMITTED_SUBMODULE_COUNT: ${{ steps.prepare.outputs.omitted_submodule_count }}
-        run: python .pipeline/scripts/source_release.py package
+          PYTHONPATH: .pipeline/src
+        run: python -m pipeline.release package
 
       - name: Upload verified source release bundle
         uses: actions/upload-artifact@v7

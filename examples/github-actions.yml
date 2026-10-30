@@ -17,11 +17,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: m-mdy-m/pipeline
-          ref: v1.0.0
+          ref: main
           path: .pipeline
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Run the project's task graph
-        run: python .pipeline/scripts/providers/github/adapter.py task check --json
+        run: PYTHONPATH=.pipeline/src python -m pipeline.providers.github task check --json

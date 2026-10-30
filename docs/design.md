@@ -1,39 +1,37 @@
 # How pipeline is put together
 
-pipeline has one main idea: describe the work once, then let the place that runs it provide its own environment.
+pipeline separates task definitions, shared execution logic, provider integration, and CI orchestration. Each part owns one kind of responsibility.
 
-There are three parts.
+## 1. Task configuration
 
-## 1. The task file
+`pipeline.toml` describes each task, its command, dependencies, environment, working directory, and timeout. It is provider-neutral: the same task graph works from a terminal, GitHub Actions, or GitLab CI.
 
-`pipeline.toml` is the list of work. It names each task, the command to run, and any tasks that must finish first.
+## 2. Installable source package
 
-For example, the test task can depend on the build task. You ask pipeline to run `test`; it knows that `build` must run first.
+All runtime code lives in `src/pipeline/` and is installable through `pyproject.toml`.
 
-## 2. The shared scripts
+| Package | Responsibility |
+| --- | --- |
+| `core/` | TOML validation, dependency planning, task execution, context, and artifact collection. |
+| `providers/` | GitHub, GitLab, and local environment adapters. |
+| `benchmark/` | Repeated command execution and benchmark reports. |
+| `release/` | Source snapshots, release notes, archive creation, verification, and checksums. |
+| `common/` | Shared logging, hashing, atomic writes, and provider-output helpers. |
+| `utils/` | Small reusable helpers such as safe workspace path resolution. |
 
-The scripts under `scripts/` do the work that should behave the same in every environment:
-
-- `scripts/pipeline_core/` reads the task file, checks it, plans the task order, runs commands, handles timeouts, and writes reports.
-- `scripts/benchmark.py` repeats a command and records how long it takes.
-- `scripts/pipeline_release/` prepares release information and source-release archives.
-- `scripts/build_release.py` prepares build-release notes and checksum files.
-
-These scripts use the Python standard library. The core reads the common `PIPELINE_*` environment values; it does not read GitHub or GitLab variables directly.
+A behavior used by more than one subsystem belongs in `common/` or `utils/`, not in a provider adapter or copied helper. Subsystems can still keep domain-specific validation and workflow behavior in their own package.
 
 ## 3. Provider adapters and workflows
 
-The adapters under `scripts/providers/` translate environment details:
+Adapters under `src/pipeline/providers/` translate environment details:
 
 - `local/` reads the local environment and optional Git metadata.
-- `github/` reads GitHub Actions variables.
+- `github/` reads GitHub Actions variables and can export normalized context to `GITHUB_ENV`.
 - `gitlab/` reads GitLab CI variables.
 
-After translation, each adapter calls the same core command.
+After translation, each adapter calls the same task core. It does not duplicate task scheduling or execution logic.
 
-Workflow files are different. A file under `.github/workflows/` tells GitHub when to start a job, which runner to use, and how to use GitHub features such as Actions artifacts and Releases. The GitLab configuration does the same for GitLab CI.
-
-This split is useful because uploading an Actions artifact is a GitHub operation, while deciding that tests must run after a build is a task-configuration rule. They belong in different places.
+Workflow files under `.github/workflows/` tell GitHub when to start a job, which runner to use, and how to use GitHub features such as Actions artifacts, Releases, Docker publishing, npm/PyPI publishing, or Pages deployment. Reusable workflows declare `on: workflow_call` and can be referenced by another repository. GitLab uses `.gitlab-ci.yml` for its scheduling and artifact rules.
 
 ## What pipeline does not do
 
@@ -48,9 +46,9 @@ When a CI job runs a task, the sequence is:
 1. The CI service starts the job.
 2. The provider adapter reads the service's environment.
 3. The adapter creates the common `PIPELINE_*` values.
-4. The task runner reads `pipeline.toml` and validates the requested tasks.
+4. The core reads `pipeline.toml` and validates the requested tasks.
 5. The runner executes each task in dependency order.
 6. The runner returns a report and a process exit code.
 7. The CI service decides whether to upload files, display the report, or publish something.
 
-The same flow works locally. Only the first two steps change: you start the command yourself and can use the local adapter instead of a CI adapter.
+The same flow works locally. Only the first two steps change: you start the command yourself and can use the local adapter.

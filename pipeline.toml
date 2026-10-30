@@ -9,8 +9,8 @@ timeout_seconds = 300
 fail_fast = true
 
 [tasks.validate]
-description = "Compile every shared script and provider adapter"
-command = ["python", "-m", "compileall", "-q", "scripts"]
+description = "Compile every shared package and provider adapter"
+command = ["python", "-m", "compileall", "-q", "src"]
 timeout_seconds = 120
 
 [tasks.test]
@@ -18,6 +18,9 @@ description = "Run unit, provider-contract and integration tests"
 command = ["python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"]
 depends_on = ["validate"]
 timeout_seconds = 300
+
+[tasks.test.env]
+PYTHONPATH = "src"
 
 [tasks.check]
 description = "Run the full configured local verification sequence"

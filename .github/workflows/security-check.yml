@@ -1,0 +1,51 @@
+name: Security Check
+
+on:
+  workflow_call:
+    inputs:
+      scan-path:
+        description: "Directory to scan for accidentally committed secrets"
+        required: false
+        type: string
+        default: "."
+      gitleaks-version:
+        required: false
+        type: string
+        default: "v8.30.1"
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Scan project files with Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Validate scanner inputs
+        env:
+          SCAN_PATH: ${{ inputs.scan-path }}
+          GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITLEAKS_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          SCAN_PATH="$(realpath "$SCAN_PATH")"
+          test -d "$SCAN_PATH"
+          echo "PIPELINE_GITLEAKS_SCAN_PATH=$SCAN_PATH" >> "$GITHUB_ENV"
+      - name: Scan for secrets
+        env:
+          GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
+          SCAN_PATH: ${{ inputs.scan-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCAN_PATH="$(realpath "$SCAN_PATH")"
+          docker pull "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}"
+          docker run --rm --network none --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m --env HOME=/tmp \
+            --mount "type=bind,source=${SCAN_PATH},target=/scan,readonly" \
+            "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}" \
+            dir --redact --no-banner --exit-code 1 /scan

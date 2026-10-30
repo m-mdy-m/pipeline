@@ -8,7 +8,7 @@ on:
       - "README.md"
       - "CHANGELOG.md"
       - "pipeline.toml"
-      - "scripts/**"
+      - "src/**"
       - "tests/**"
       - "docs/**"
       - ".github/workflows/**"
@@ -25,7 +25,7 @@ jobs:
       pipeline-ref: ${{ github.sha }}
       category: startup
       repetitions: 5
-      benchmark-command: python scripts/providers/github/adapter.py task check --json
+      benchmark-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
 
   catalog-size:
     name: Tracked source and workflow size

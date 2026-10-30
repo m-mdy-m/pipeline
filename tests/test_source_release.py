@@ -9,8 +9,10 @@ import unittest
 import zipfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import source_release as sr
+SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(SOURCE_ROOT))
+os.environ["PYTHONPATH"] = str(SOURCE_ROOT) + os.pathsep + os.environ.get("PYTHONPATH", "")
+import pipeline.release as sr
 
 
 class ChangelogTests(unittest.TestCase):
@@ -107,18 +109,15 @@ class ArchiveIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             commit = self.create_repo(root)
-            script_dest = root / "scripts" / "source_release.py"
-            script_dest.parent.mkdir(parents=True, exist_ok=True)
-            scripts_root = Path(__file__).resolve().parents[1] / "scripts"
-            script_dest.write_bytes((scripts_root / "source_release.py").read_bytes())
-            shutil.copytree(scripts_root / "pipeline_release", root / "scripts" / "pipeline_release")
-            shutil.copytree(scripts_root / "pipeline_core", root / "scripts" / "pipeline_core")
-            subprocess.run(["git", "add", "scripts"], cwd=root, check=True)
+            source_root = Path(__file__).resolve().parents[1] / "src"
+            shutil.copytree(source_root, root / "src")
+            subprocess.run(["git", "add", "src"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-qm", "add modular helper"], cwd=root, check=True)
             commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
             subprocess.run(["git", "tag", "-f", "v1.2.3", commit], cwd=root, check=True, stdout=subprocess.DEVNULL)
             outputs = root / "outputs.txt"
             env = os.environ.copy()
+            env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
             env.update({
                 "PIPELINE_REF_TYPE": "tag", "PIPELINE_REF_NAME": "v1.2.3", "PIPELINE_SHA": commit,
                 "PIPELINE_REPOSITORY": "demo/project", "PIPELINE_WORKSPACE": str(root), "PIPELINE_OUTPUT_FILE": str(outputs), "SOURCE_WORK_DIR": str(root / "work"),
@@ -129,7 +128,7 @@ class ArchiveIntegrationTests(unittest.TestCase):
                 "SOURCE_SENSITIVE_ALLOWLIST_PATTERNS": "", "SOURCE_GITLEAKS_ALLOWLIST_PATH": "",
                 "SOURCE_RELEASE_NOTES_MODE": "section", "SOURCE_RELEASE_NOTES_PATH": "",
             })
-            subprocess.run([sys.executable, "scripts/source_release.py", "prepare"], cwd=root, env=env, check=True)
+            subprocess.run([sys.executable, "-m", "pipeline.release", "prepare"], cwd=root, env=env, check=True)
             resolved = ""
             excluded_count = "0"
             for line in outputs.read_text(encoding="utf-8").splitlines():
@@ -142,7 +141,7 @@ class ArchiveIntegrationTests(unittest.TestCase):
             scan_changelog = root / "work" / "secret-scan" / "CHANGELOG.md"
             self.assertTrue(scan_changelog.is_file())
             self.assertIn("source release", scan_changelog.read_text(encoding="utf-8"))
-            subprocess.run([sys.executable, "scripts/source_release.py", "package"], cwd=root, env=env, check=True)
+            subprocess.run([sys.executable, "-m", "pipeline.release", "package"], cwd=root, env=env, check=True)
 
             archive_path = root / "work" / "release-assets" / "project-v1.2.3-source.zip"
             self.assertTrue(archive_path.is_file())

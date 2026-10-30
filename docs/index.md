@@ -32,7 +32,7 @@ New users can start with **Getting started**, then read **Task configuration** w
 - **Dependency**: another task that must finish before this task can start.
 - **Workspace**: the project directory pipeline is working in.
 - **Provider**: the service or environment that starts the work, such as a local terminal, GitHub Actions, or GitLab CI.
-- **Adapter**: a small script that reads provider-specific variables and converts them into the common `PIPELINE_*` environment.
+- **Adapter**: a small Python module that reads provider-specific variables and converts them into the common `PIPELINE_*` environment.
 - **Artifact**: a file you want to keep after a task or CI run, such as a test report or a packaged build.
 
 ## Rules worth knowing
@@ -42,6 +42,6 @@ New users can start with **Getting started**, then read **Task configuration** w
 - A task's working directory must stay inside the project workspace.
 - `PIPELINE_*` names are reserved for information supplied by pipeline and its adapters.
 - A failed task stops later independent tasks by default. Tasks that depend on a failed task are skipped.
-- GitHub and GitLab are responsible for their own features, such as uploading CI artifacts or publishing a release. The shared scripts handle the work that can be shared.
+- GitHub and GitLab are responsible for their own features, such as uploading CI artifacts or publishing a release. The shared Python package handles the work that can be shared.
 
-The examples and commands in these guides match the scripts and workflows in this repository. When a command needs an optional tool, such as Bash for the benchmark runner, that requirement is called out where it is used.
+The examples and commands in these guides match the package modules and workflows in this repository. When a command needs an optional tool, such as Bash for the benchmark runner, that requirement is called out where it is used.

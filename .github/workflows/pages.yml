@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: "."
+      dry-run:
+        description: "Build and upload the Pages artifact without deploying"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,6 +49,7 @@ jobs:
         with:
           path: ${{ inputs.working-directory }}/${{ inputs.output-directory }}
   deploy:
+    if: inputs.dry-run != true
     needs: build
     runs-on: ubuntu-latest
     permissions:

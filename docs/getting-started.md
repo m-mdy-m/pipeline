@@ -1,102 +1,65 @@
 # Getting started
 
-This guide gets pipeline running on your computer and shows how to run a small task.
+This guide shows the quickest way to install pipeline and run its task graph.
 
-## 1. What you need
+## Requirements
 
-- Python 3.12 or newer. The repository's CI uses Python 3.12.
-- Git, to clone the project.
-- Make, only if you want to use the `make check` shortcut.
+Use Python 3.11 or newer. Git is needed to clone the repository; Make is optional and is only used for the `make check` shortcut.
 
-The task runner itself uses Python's standard library. You do not need to install a Python package or third-party dependency.
-
-## 2. Get the project
-
-Clone the repository and move into it:
+## Install
 
 ~~~sh
 git clone https://github.com/m-mdy-m/pipeline.git
 cd pipeline
+python -m pip install -e .
 ~~~
 
-Run the configuration check:
+The editable install exposes `pipeline`, `pipeline-local`, `pipeline-github`, and `pipeline-gitlab` commands.
+
+## Validate and run tasks
 
 ~~~sh
-python scripts/pipeline.py validate
+pipeline validate
+pipeline list
+pipeline run check
 ~~~
 
-A valid configuration prints a success message. If the file has a typo or an unknown field, pipeline reports the problem and exits with a non-zero status.
+For this repository, `check` depends on `test`, while `test` depends on `validate`. The validation task compiles the source package, and the test task runs the unit and integration tests.
 
-## 3. See and run the tasks
-
-List the tasks in the repository's `pipeline.toml`:
+You can use the source tree without installing it by setting `PYTHONPATH=src`:
 
 ~~~sh
-python scripts/pipeline.py list
+PYTHONPATH=src python -m pipeline validate
+PYTHONPATH=src python -m pipeline run check
 ~~~
 
-Run the full check sequence:
+## Try the example configuration
+
+The file `examples/pipeline.toml` contains a small dependency graph:
 
 ~~~sh
-python scripts/pipeline.py run check
+pipeline validate --config examples/pipeline.toml
+pipeline run finish --config examples/pipeline.toml
 ~~~
 
-For this repository, `check` depends on `test`, and `test` depends on `validate`. The result is:
+The `finish` task depends on `greet`, so pipeline runs them in order.
 
-1. Python checks that the scripts compile.
-2. Python runs the unit and provider-contract tests.
-3. The final task prints that the checks completed.
-
-The last task is deliberately simple. In your own project, you choose what each task does.
-
-## 4. Try a small example
-
-The file `examples/pipeline.toml` contains a tiny task configuration. Run it without replacing the repository's main configuration:
+## Save a machine-readable report
 
 ~~~sh
-python scripts/pipeline.py validate --config examples/pipeline.toml
-python scripts/pipeline.py run greet --config examples/pipeline.toml
+pipeline run check --json --result .pipeline-artifacts/pipeline-result.json
 ~~~
 
-The `greet` task prints a message. Open the file and change the message or add another task to see how the configuration works.
+The report records the provider, workspace, requested tasks, each task's status, exit code, and duration.
 
-## 5. Save a machine-readable result
-
-Use `--json` when another tool needs to read the result:
-
-~~~sh
-python scripts/pipeline.py run check --json
-~~~
-
-To also save the report to a file:
-
-~~~sh
-python scripts/pipeline.py run check \
-  --json \
-  --result .pipeline-artifacts/pipeline-result.json
-~~~
-
-The report includes the provider, workspace, requested tasks, each task's status, its exit code, and its duration.
-
-## 6. Run the repository's full checks
-
-If Make is installed, use:
+## Run repository checks
 
 ~~~sh
 make check
 ~~~
 
-This checks the required documentation files, checks the workflow inventory, validates `pipeline.toml`, compiles the scripts, and runs the tests.
+This verifies the required documentation and workflow inventory, validates the task configuration, compiles the source package, and runs the test suite.
 
-Without Make, run the main checks directly:
+## Next steps
 
-~~~sh
-python scripts/pipeline.py validate
-python -m unittest discover -s tests -p "test_*.py" -v
-~~~
-
-## Where to go next
-
-- Read [Task configuration](configuration.md) to add tasks, dependencies, timeouts, and environment variables.
-- Read [Providers](providers.md) to run the same configuration on GitHub Actions or GitLab CI.
-- Read [Development guide](development.md) before changing pipeline itself.
+Read [Task configuration](configuration.md) to add tasks and dependencies, [Providers](providers.md) to use GitHub Actions or GitLab CI, and [Development](development.md) before changing pipeline itself.

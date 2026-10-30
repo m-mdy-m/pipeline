@@ -1,0 +1,106 @@
+name: Reusable Workflow Dry Run
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/**"
+      - "src/**"
+      - "tests/**"
+      - "examples/workflow-smoke/**"
+      - "pyproject.toml"
+      - "pipeline.toml"
+      - "Makefile"
+      - "CHANGELOG.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  ci:
+    name: Reusable Python CI
+    uses: ./.github/workflows/ci.yml
+    with:
+      language: python
+      python-version: "3.12"
+      build-command: PYTHONPATH=src python -m compileall -q src
+      test-command: PYTHONPATH=src python -m unittest discover -s tests -p 'test_*.py' -v
+
+  docs:
+    name: Reusable documentation check
+    uses: ./.github/workflows/docs-check.yml
+
+  security:
+    name: Reusable secret scan
+    uses: ./.github/workflows/security-check.yml
+    with:
+      scan-path: src
+
+  benchmark:
+    name: Reusable benchmark dry run
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      pipeline-ref: ${{ github.sha }}
+      category: startup
+      repetitions: 2
+      benchmark-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
+
+  release-dry-run:
+    name: Reusable build release dry run
+    uses: ./.github/workflows/release.yml
+    with:
+      pipeline-ref: ${{ github.sha }}
+      test-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
+      build-command: |
+        set -euo pipefail
+        mkdir -p dist
+        printf 'pipeline reusable release dry run\n' > dist/workflow-smoke.txt
+      artifact-path: dist/*
+      changelog-path: CHANGELOG.md
+      dry-run: true
+
+  source-release-dry-run:
+    name: Reusable source release dry run
+    uses: ./.github/workflows/source-release.yml
+    with:
+      pipeline-ref: ${{ github.sha }}
+      changelog-path: CHANGELOG.md
+      changelog-missing-policy: fail
+      changelog-asset-mode: archive-and-asset
+      source-submodules: fail-if-present
+      dry-run: true
+
+  docker-dry-run:
+    name: Reusable Docker build without push
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      image: local/pipeline-workflow-smoke
+      context: examples/workflow-smoke/docker
+      dockerfile: Dockerfile
+      dry-run: true
+
+  npm-dry-run:
+    name: Reusable npm package dry run
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      working-directory: examples/workflow-smoke/npm
+      node-version: "22"
+      dry-run: true
+
+  python-package-dry-run:
+    name: Reusable Python package dry run
+    uses: ./.github/workflows/python-publish.yml
+    with:
+      python-version: "3.12"
+      dry-run: true
+
+  pages-dry-run:
+    name: Reusable Pages build without deployment
+    uses: ./.github/workflows/pages.yml
+    with:
+      build-command: mkdir -p dist && printf '<h1>pipeline pages dry run</h1>\n' > dist/index.html
+      output-directory: dist
+      dry-run: true

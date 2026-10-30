@@ -25,8 +25,8 @@ command = ["python", "-c", "print('Hello from pipeline')"]
 Save this as `pipeline.toml` and run:
 
 ~~~sh
-python scripts/pipeline.py validate
-python scripts/pipeline.py run greet
+PYTHONPATH=src python -m pipeline validate
+PYTHONPATH=src python -m pipeline run greet
 ~~~
 
 The command is written as a list: `python` is the program, and the remaining strings are its arguments. This is intentional. pipeline starts the program directly; it does not interpret shell operators such as `|`, `&&`, or `>`.
@@ -78,13 +78,13 @@ depends_on = ["test"]
 When you run:
 
 ~~~sh
-python scripts/pipeline.py run check
+PYTHONPATH=src python -m pipeline run check
 ~~~
 
 pipeline follows the dependencies and runs `build`, then `test`, then `check`. You can also request more than one target:
 
 ~~~sh
-python scripts/pipeline.py run build test
+PYTHONPATH=src python -m pipeline run build test
 ~~~
 
 A task is planned only once, even when more than one requested target depends on it. Dependencies are checked for missing task names and cycles before anything is run.
@@ -109,7 +109,7 @@ With `fail_fast = true`, pipeline stops starting unrelated tasks after a task fa
 You can override fail-fast for one run:
 
 ~~~sh
-python scripts/pipeline.py run check --no-fail-fast
+PYTHONPATH=src python -m pipeline run check --no-fail-fast
 ~~~
 
 This lets independent later tasks run after a failure. It does not allow a task to run when one of its dependencies failed.
@@ -145,7 +145,7 @@ Do not put passwords or API tokens in `pipeline.toml`. Use the secret store prov
 Run:
 
 ~~~sh
-python scripts/pipeline.py validate
+PYTHONPATH=src python -m pipeline validate
 ~~~
 
 Validation checks the TOML syntax, supported fields, command format, positive timeouts, working-directory safety, dependency names, and dependency cycles. An unknown key is an error rather than something pipeline silently ignores.

@@ -15,16 +15,21 @@ on:
         required: false
         type: string
         default: "https://registry.npmjs.org"
+      dry-run:
+        description: "Test and package the npm project without publishing"
+        required: false
+        type: boolean
+        default: false
     secrets:
       npm-token:
-        required: true
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: inputs.dry-run == true || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,6 +45,7 @@ jobs:
           npm run build --if-present
           npm pack --dry-run
       - name: Publish stable or prerelease
+        if: inputs.dry-run != true
         working-directory: ${{ inputs.working-directory }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.npm-token }}

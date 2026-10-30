@@ -22,11 +22,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Check this repository's required documents and workflow inventory
-        if: hashFiles('Makefile') != ''
+      - name: Check pipeline repository contracts
+        if: hashFiles('src/pipeline/core/cli.py') != ''
         run: make docs-check workflow-inventory
-      - name: Validate the shared task configuration through the provider adapter
-        if: hashFiles('scripts/providers/github/adapter.py') != ''
-        run: python scripts/providers/github/adapter.py run validate --json
+      - name: Validate the shared task configuration
+        if: hashFiles('src/pipeline/providers/github/adapter.py') != ''
+        env:
+          PYTHONPATH: src
+        run: python -m pipeline.providers.github run validate --json
       - name: Check whitespace
         run: git diff --check

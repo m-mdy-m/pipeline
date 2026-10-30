@@ -11,7 +11,7 @@ The benchmark runner uses Bash to execute the command, so Bash must be available
 From the repository root:
 
 ~~~sh
-python scripts/benchmark.py \
+PYTHONPATH=src python -m pipeline.benchmark \
   --command "python -m unittest discover -s tests" \
   --category startup \
   --repetitions 5
@@ -24,7 +24,7 @@ The command is executed five times. Each run is timed separately.
 Use `--setup-command` for work that should happen once before the timer starts. For example, compile an application before measuring its startup:
 
 ~~~sh
-python scripts/benchmark.py \
+PYTHONPATH=src python -m pipeline.benchmark \
   --setup-command "make build" \
   --command "./build/my-app --version" \
   --category startup \
@@ -71,15 +71,15 @@ The command's output and error output are written to its log file. The runner do
 ~~~yaml
 jobs:
   benchmark:
-    uses: m-mdy-m/pipeline/.github/workflows/benchmark.yml@v1.0.0
+    uses: m-mdy-m/pipeline/.github/workflows/benchmark.yml@main
     with:
-      pipeline-ref: v1.0.0
+      pipeline-ref: main
       category: startup
       repetitions: 5
       benchmark-command: python -m unittest discover -s tests
 ~~~
 
-The workflow runs the shared script and uploads the reports. Keep `pipeline-ref` on the same reviewed tag or commit as the `uses` reference. That way, the workflow and the script it calls come from the same version.
+The workflow runs the shared benchmark module and uploads the reports. Keep `pipeline-ref` on the same reviewed tag or commit as the `uses` reference. That way, the workflow and the script it calls come from the same version.
 
 ## Compare results fairly
 

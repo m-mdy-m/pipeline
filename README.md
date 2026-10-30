@@ -3,34 +3,40 @@
 [![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg)](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml)
 [![License](https://img.shields.io/github/license/m-mdy-m/pipeline)](LICENSE)
 
-**pipeline** is a small task runner and CI workflow collection. It gives a project one place to describe commands such as building, testing, and checking documentation, then runs those commands in the right order.
+**pipeline** is a small task runner and reusable CI workflow toolkit. Define build, test, and release tasks once in `pipeline.toml`, then run the same task graph locally, in GitHub Actions, or in GitLab CI.
 
-You write the tasks in `pipeline.toml`. The same task file can be used from a local terminal, GitHub Actions, or GitLab CI.
+GitHub and GitLab still schedule jobs and store artifacts. pipeline provides the shared task engine, provider adapters, reusable GitHub workflows, and portable release and benchmark helpers.
 
-pipeline is not a hosted CI service. GitHub and GitLab still start the jobs and store the artifacts. pipeline keeps the task definitions and the shared work out of provider-specific YAML.
+## Install
 
-## Run it
-
-You need Python 3.12 or newer.
+Python 3.11 or newer is required. Install the package in editable mode:
 
 ~~~sh
 git clone https://github.com/m-mdy-m/pipeline.git
 cd pipeline
-
-python scripts/pipeline.py validate
-python scripts/pipeline.py list
-python scripts/pipeline.py run check
+python -m pip install -e .
 ~~~
 
-To run the repository's complete local check, install Make and run:
+Run the task runner:
 
 ~~~sh
-make check
+pipeline validate
+pipeline list
+pipeline run check
 ~~~
+
+The source checkout can also be used without installing the package:
+
+~~~sh
+PYTHONPATH=src python -m pipeline validate
+PYTHONPATH=src python -m pipeline run check
+~~~
+
+To run the repository's full local checks, install Make and run `make check`.
 
 ## Use it in your project
 
-Create a `pipeline.toml` file in your project. A task is just a command:
+Create a `pipeline.toml` file in your repository. A task is a command represented as an argument array:
 
 ~~~toml
 schema_version = 1
@@ -43,49 +49,53 @@ description = "Run the test suite"
 command = ["python", "-m", "unittest", "discover", "-s", "tests"]
 ~~~
 
-Run it with:
-
-~~~sh
-python scripts/pipeline.py run test
-~~~
-
-Commands are lists of arguments, not shell strings. Tasks run one at a time. Use `depends_on` when one task must finish before another.
-
-See the [configuration guide](docs/configuration.md) for the full format and [examples](examples/README.md) for files you can copy.
+Run it with `pipeline run test`. Commands are not implicitly passed through a shell. Use `depends_on` to make one task wait for another. See the [configuration guide](docs/configuration.md) for all supported fields.
 
 ## Use it in CI
 
-Use the matching provider adapter to run the same task file:
+The same task configuration can run through a provider adapter:
 
 ~~~sh
-# Local terminal
-python scripts/providers/local/adapter.py run check --json
-
-# GitHub Actions
-python scripts/providers/github/adapter.py task check --json
-
-# GitLab CI
-python scripts/providers/gitlab/adapter.py run check --json
+pipeline-local run check --json
+pipeline-github task check --json
+pipeline-gitlab run check --json
 ~~~
 
-When pipeline is kept in a separate helper checkout, call the adapter from that checkout. The adapter still reads `pipeline.toml` from the calling project's workspace.
+### Call a reusable GitHub workflow
 
-This repository also provides reusable GitHub workflows for build/test jobs, benchmarks, build releases, source releases, Docker, npm, and GitHub Pages. See the [provider guide](docs/providers.md) and [release guide](docs/releases.md).
+The workflow files can be called directly from another repository. For example, this invokes the reusable CI workflow in this repository:
+
+~~~yaml
+name: Project CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: m-mdy-m/pipeline/.github/workflows/ci.yml@main
+    with:
+      language: python
+      python-version: "3.12"
+      build-command: python -m compileall -q src
+      test-command: python -m unittest discover -s tests -p "test_*.py" -v
+~~~
+
+The referenced file must declare `on: workflow_call`, and the call must appear at the job level. `@main` is convenient while evaluating changes. For production projects, pin a reviewed release tag or full commit SHA so the workflow does not change unexpectedly.
+
+Reusable workflows are also available for documentation checks, benchmarks, compiled releases, source releases, Docker, npm, Python packages, security scans, and GitHub Pages. Publishing/deployment workflows expose `dry-run` inputs where a non-publishing test is useful. See [Providers and reusable workflows](docs/providers.md) and [Releases](docs/releases.md).
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md). It explains where to go next:
-
-- [Getting started](docs/getting-started.md)
-- [Task configuration](docs/configuration.md)
-- [How pipeline is put together](docs/design.md)
-- [Providers and reusable workflows](docs/providers.md)
-- [Benchmarks](docs/benchmarking.md)
-- [Releases](docs/releases.md)
-- [Development](docs/development.md)
+Start with the [documentation index](docs/index.md), then read [Getting started](docs/getting-started.md), [Task configuration](docs/configuration.md), [Design](docs/design.md), [Providers](docs/providers.md), [Benchmarks](docs/benchmarking.md), [Releases](docs/releases.md), and [Development](docs/development.md).
 
 ## Requirements and license
 
-The task runner uses the Python standard library. The benchmark runner also needs Bash because it executes the measured command through Bash. Git is used by the local adapter when it is available.
+The task runner uses the Python standard library. Benchmark commands are executed through Bash. Git is used by the local provider to detect repository metadata when available. Source-release security scanning uses Docker and Gitleaks in the GitHub workflow.
 
 pipeline is released under the license in [LICENSE](LICENSE).

@@ -5,12 +5,12 @@ stages:
   - test
 
 before_script:
-  - git clone --depth 1 --branch v1.0.0 https://github.com/m-mdy-m/pipeline.git .pipeline
+  - git clone --depth 1 --branch main https://github.com/m-mdy-m/pipeline.git .pipeline
 
 pipeline-check:
   stage: test
   script:
-    - python .pipeline/scripts/providers/gitlab/adapter.py run check --json
+    - PYTHONPATH=.pipeline/src python -m pipeline.providers.gitlab run check --json
   artifacts:
     when: always
     paths:

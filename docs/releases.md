@@ -45,9 +45,9 @@ permissions:
 
 jobs:
   release:
-    uses: m-mdy-m/pipeline/.github/workflows/release.yml@v1.0.0
+    uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
     with:
-      pipeline-ref: v1.0.0
+      pipeline-ref: main
       test-command: make check
       build-command: make release
       artifact-path: dist/*
@@ -80,9 +80,9 @@ permissions:
 
 jobs:
   source:
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@v1.0.0
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@main
     with:
-      pipeline-ref: v1.0.0
+      pipeline-ref: main
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
       source-archive-name: "{repository}-{tag}-source.zip"
