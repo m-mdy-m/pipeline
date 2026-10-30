@@ -4,7 +4,14 @@
 
 ### Added
 
-- Added a provider-neutral `artifact-test` release-target stage to `src/pipeline/release/target.py` and its CLI. GitHub Actions only transfers the per-target artifact and invokes the shared target runner; the core records and reports artifact-test results.
+- Added a provider-neutral `artifact-test` release-target stage to `src/pipeline/release/target.py` and its CLI. CI providers transfer the per-target artifact and invoke the shared target runner; the core records and reports artifact-test results.
+
+### Changed
+
+- Resolve a canonical release tag in the shared release builder for both tag builds and branch dry-runs. Store it in `release-meta.json` and pass it to release scripts as `PIPELINE_RELEASE_TAG`, keeping artifact names consistent across release environments.
+- Expose downloaded native-test artifacts through the provider-neutral `PIPELINE_ARTIFACT_TEST_DIR` contract instead of a project-specific environment variable.
+- Retry GitHub native artifact downloads up to three times, using isolated temporary directories for each attempt, and report download and artifact-test outcomes separately.
+- Extend the Pipeline release smoke test to exercise the complete artifact upload, download, and verification path.
 
 All notable changes to Pipeline are documented in this file.
 
