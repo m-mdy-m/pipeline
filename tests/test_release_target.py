@@ -40,6 +40,27 @@ class ReleaseTargetTests(unittest.TestCase):
             self.assertEqual(environment["MSYS2_PATH_TYPE"], "inherit")
             self.assertEqual(environment["CHERE_INVOKING"], "1")
 
+    def test_windows_msys2_discovers_default_runner_temp_installation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner_temp = Path(tmp) / "runner-temp"
+            root = runner_temp / "msys64"
+            bash = root / "usr" / "bin" / "bash.exe"
+            bash.parent.mkdir(parents=True)
+            bash.write_bytes(b"test executable")
+            (root / "clangarm64" / "bin").mkdir(parents=True)
+
+            environment = {
+                "MSYSTEM": "CLANGARM64",
+                "RUNNER_TEMP": str(runner_temp),
+                "PATH": "C:\\Windows\\System32",
+            }
+            resolved = _resolve_shell("bash", environment, platform_name="win32")
+
+            self.assertEqual(resolved, str(bash))
+            self.assertTrue(environment["PATH"].startswith(
+                f"{root / 'clangarm64' / 'bin'};{root / 'usr' / 'bin'};"
+            ))
+
     def test_non_msys2_shell_resolution_is_unchanged(self) -> None:
         environment = {"PATH": "/usr/bin"}
         self.assertEqual(
