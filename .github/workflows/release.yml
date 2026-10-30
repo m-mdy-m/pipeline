@@ -179,13 +179,29 @@ jobs:
           update: false
           install: ${{ matrix.msys2_packages }}
 
-      - name: Run tests
-        shell: ${{ runner.os == 'Windows' && matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
+      # Keep runner-context checks in step-level if conditions. The runner context
+      # is not available while evaluating the shell property.
+      - name: Run tests (MSYS2)
+        if: runner.os == 'Windows' && matrix.msys2_msystem != null
+        shell: msys2 {0}
         working-directory: ${{ inputs.working-directory }}
         run: ${{ matrix.test_command || inputs.test-command }}
 
+      - name: Run tests
+        if: runner.os != 'Windows' || matrix.msys2_msystem == null
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ matrix.test_command || inputs.test-command }}
+
+      - name: Build release artifacts (MSYS2)
+        if: runner.os == 'Windows' && matrix.msys2_msystem != null
+        shell: msys2 {0}
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ matrix.build_command || inputs.build-command }}
+
       - name: Build release artifacts
-        shell: ${{ runner.os == 'Windows' && matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
+        if: runner.os != 'Windows' || matrix.msys2_msystem == null
+        shell: bash
         working-directory: ${{ inputs.working-directory }}
         run: ${{ matrix.build_command || inputs.build-command }}
 
