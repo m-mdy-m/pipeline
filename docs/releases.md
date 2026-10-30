@@ -78,6 +78,22 @@ For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix 
 
 A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
+### Test the packaged artifact on its native runner
+
+The optional `artifact-test-command` runs after the target's build artifacts have been uploaded and downloaded again on that same native runner. The reusable workflow passes the command to the provider-neutral release target runner as the `artifact-test` stage; it does not execute or interpret the test command itself.
+
+~~~yaml
+artifact-path: dist/release/*
+artifact-test-command: bash scripts/release/test-artifacts.sh
+build-matrix-json: >-
+  {"include":[
+    {"id":"linux-amd64","os":"ubuntu-24.04"},
+    {"id":"windows-amd64","os":"windows-2025","artifact_test_command":"pwsh -NoProfile -File scripts/release/test-artifacts.ps1"}
+  ]}
+~~~
+
+Each stage is recorded as `.pipeline-artifacts/release-targets/<target>/<stage>.json` and included in the shared target summary. An artifact-test failure fails that target and prevents release assembly and publication. A project using another CI host can download its own artifact and invoke the same core stage with `python -m pipeline.release.target_cli run --target <target> --stage artifact-test`, setting `PIPELINE_RELEASE_COMMAND` to the project-owned test command. The CI provider is responsible only for its own artifact transfer and native-runner setup.
+
 ## Try a build release without publishing
 
 Set `dry-run: true` when calling the workflow. It still validates the tag or development version, runs tests and builds, collects assets, and creates checksums. It skips the GitHub Release publishing job.
