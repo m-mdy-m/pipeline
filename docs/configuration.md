@@ -45,7 +45,7 @@ timeout_seconds = 180
 The supported task fields are:
 
 | Field | Required? | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `command` | Yes | Program and arguments as a non-empty array of strings |
 | `description` | No | A short explanation shown by `list` |
 | `working_directory` | No | Directory where the command runs; defaults to `.` |
@@ -155,7 +155,7 @@ Validation checks the TOML syntax, supported fields, command format, positive ti
 The top-level file supports:
 
 | Section | Purpose |
-|---|---|
+| --- | --- |
 | `schema_version` | Must be the integer `1` |
 | `[project]` | Optional `name` and `description` |
 | `[defaults]` | Optional `timeout_seconds` and `fail_fast` |

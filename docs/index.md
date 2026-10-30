@@ -15,7 +15,7 @@ GitHub Actions and GitLab CI do not need their own copy of that task logic. A sm
 ## Start here
 
 | I want to… | Read |
-|---|---|
+| --- | --- |
 | Run pipeline for the first time | [Getting started](getting-started.md) |
 | Write or change `pipeline.toml` | [Task configuration](configuration.md) |
 | Use pipeline locally, on GitHub, or on GitLab | [Providers](providers.md) |

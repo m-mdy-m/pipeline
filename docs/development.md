@@ -22,7 +22,7 @@ The test suite includes configuration and task-runner tests, local/GitHub/GitLab
 ## Where to put a change
 
 | Change | Put it here |
-|---|---|
+| --- | --- |
 | Task configuration or task execution | `scripts/pipeline_core/` |
 | Shared benchmark behavior | `scripts/benchmark.py` |
 | Shared build-release behavior | `scripts/pipeline_release/build.py` |

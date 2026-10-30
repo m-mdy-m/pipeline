@@ -3,7 +3,7 @@
 These examples are small starting points. Copy the file you need into your project, then change the task names and commands to match that project.
 
 | File | Use it for |
-|---|---|
+| --- | --- |
 | [`pipeline.toml`](pipeline.toml) | A tiny task graph with one dependency |
 | [`github-actions.yml`](github-actions.yml) | Running a project's task graph from GitHub Actions |
 | [`gitlab-ci.yml`](gitlab-ci.yml) | Running a project's task graph from GitLab CI |

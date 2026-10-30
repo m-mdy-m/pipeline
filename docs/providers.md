@@ -108,7 +108,7 @@ The GitLab adapter reads values such as `CI_COMMIT_SHA`, `CI_COMMIT_TAG`, and `C
 The adapters translate provider variables into a small set of common values:
 
 | Common value | What it describes |
-|---|---|
+| --- | --- |
 | `PIPELINE_PROVIDER` | `local`, `github`, or `gitlab` |
 | `PIPELINE_EVENT` | Event that started the run, when known |
 | `PIPELINE_REF_TYPE` | `branch`, `tag`, or another provider ref type |
@@ -128,7 +128,7 @@ The core reads these common values. It does not read `GITHUB_*` or `CI_*` variab
 This repository also publishes ready-made GitHub Actions workflows. These are useful when a project wants a standard GitHub job without writing the setup steps itself.
 
 | Workflow | What it does |
-|---|---|
+| --- | --- |
 | `ci.yml` | Prepares a Go, Node.js, Rust, Python, C, or custom environment, then runs the build, test, and optional lint commands supplied by the caller. |
 | `benchmark.yml` | Checks out the shared benchmark script, runs it, and uploads the result directory. |
 | `release.yml` | Builds for one or more targets, creates checksums, and publishes a GitHub Release. |

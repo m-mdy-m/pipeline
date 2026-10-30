@@ -36,7 +36,7 @@ The setup command is not included in the measured durations. If setup fails, no 
 ## Options
 
 | Option | Required? | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `--command` | Yes | Command to run for every measurement |
 | `--category` | Yes | Label for the result, such as `startup` or `throughput` |
 | `--repetitions` | Yes | Number of runs, from 1 to 1000 |
@@ -53,7 +53,7 @@ If one measured run returns a non-zero exit code, the runner stops repeating the
 The default `benchmark-results/` directory contains:
 
 | File | Contents |
-|---|---|
+| --- | --- |
 | `iterations.csv` | One row per attempt, including start time, duration, and exit code |
 | `summary.csv` | Minimum, median, mean, and maximum duration, plus the run count |
 | `summary.json` | The same summary in JSON format, including the final exit code |
