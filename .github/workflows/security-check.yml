@@ -66,4 +66,4 @@ jobs:
             echo "Gitleaks did not produce a findings report."
             exit 0
           fi
-          jq -r '.[] | "Gitleaks: \\(.RuleID) in \\(.File):\\(.StartLine) — \\(.Description)"' "$REPORT"
+          jq -r '.[] | "Gitleaks: " + .RuleID + " in " + .File + ":" + (.StartLine | tostring) + " — " + .Description' "$REPORT"
