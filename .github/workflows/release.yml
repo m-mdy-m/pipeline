@@ -31,6 +31,26 @@ on:
         required: false
         type: string
         default: "CHANGELOG.md"
+      go-version:
+        description: "Optional Go version to install for Go-based release builds"
+        required: false
+        type: string
+        default: ""
+      setup-node:
+        description: "Install Node.js for projects with frontend build steps"
+        required: false
+        type: boolean
+        default: false
+      node-version:
+        description: "Node.js version to install when setup-node is enabled"
+        required: false
+        type: string
+        default: "22"
+      pnpm-version:
+        description: "Optional pnpm version to activate when setup-node is enabled"
+        required: false
+        type: string
+        default: ""
       build-matrix-json:
         description: 'JSON matrix object, e.g. {"include":[{"id":"linux-x64","os":"ubuntu-latest"}]}'
         required: false
@@ -126,13 +146,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run tests
+      - name: Set up Go
+        if: inputs.go-version != ''
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Set up Node.js
+        if: inputs.setup-node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Activate pnpm
+        if: inputs.setup-node && inputs.pnpm-version != ''
+        env:
+          PNPM_VERSION: ${{ inputs.pnpm-version }}
         shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+          pnpm --version
+
+      - name: Set up MSYS2 toolchain
+        if: runner.os == 'Windows' && matrix.msys2_msystem != null
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msys2_msystem }}
+          path-type: inherit
+          update: false
+          install: ${{ matrix.msys2_packages }}
+
+      - name: Run tests
+        shell: ${{ runner.os == 'Windows' && matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
         working-directory: ${{ inputs.working-directory }}
         run: ${{ matrix.test_command || inputs.test-command }}
 
       - name: Build release artifacts
-        shell: bash
+        shell: ${{ runner.os == 'Windows' && matrix.msys2_msystem != null && 'msys2 {0}' || 'bash' }}
         working-directory: ${{ inputs.working-directory }}
         run: ${{ matrix.build_command || inputs.build-command }}
 
