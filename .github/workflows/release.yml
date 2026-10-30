@@ -279,23 +279,30 @@ jobs:
           name: release-build-${{ matrix.id }}
           path: ${{ runner.temp }}/release-artifact-test
 
-      - name: Test downloaded release artifacts (Windows)
-        id: artifact_test_windows
+      - name: Run artifact tests (MSYS2)
+        id: artifact_test_msys2
         if: runner.os == 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null)
-        shell: pwsh
+        shell: msys2 {0}
         env:
-          IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
+          PYTHONPATH: .pipeline/src
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
-        run: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage artifact-test --working-directory "$RELEASE_WORKING_DIRECTORY"
 
-      - name: Test downloaded release artifacts
+      - name: Run artifact tests
         id: artifact_test_bash
         if: runner.os != 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null)
         shell: bash
         env:
-          IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
+          PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
-        run: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          IDIOS_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact-test
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage artifact-test --working-directory "$RELEASE_WORKING_DIRECTORY"
 
       - name: Report release target outcome
         if: always()
@@ -306,7 +313,7 @@ jobs:
           TARGET_REPORT_DIR: .pipeline-artifacts/release-targets
           TEST_OUTCOME: ${{ steps.test_msys2.outcome != 'skipped' && steps.test_msys2.outcome || steps.test_bash.outcome }}
           BUILD_OUTCOME: ${{ steps.build_msys2.outcome != 'skipped' && steps.build_msys2.outcome || steps.build_bash.outcome }}
-          ARTIFACT_TEST_OUTCOME: ${{ steps.artifact_test_windows.outcome != 'skipped' && steps.artifact_test_windows.outcome || steps.artifact_test_bash.outcome }}
+          ARTIFACT_TEST_OUTCOME: ${{ steps.artifact_test_msys2.outcome != 'skipped' && steps.artifact_test_msys2.outcome || steps.artifact_test_bash.outcome }}
         run: |
           set -u
           report="$TARGET_REPORT_DIR/$TARGET_ID/summary.md"

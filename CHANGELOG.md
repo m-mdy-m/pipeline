@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added optional native-runner tests for downloaded release artifacts before release assembly and publication.
+- Added a provider-neutral `artifact-test` release-target stage to `src/pipeline/release/target.py` and its CLI. GitHub Actions only transfers the per-target artifact and invokes the shared target runner; the core records and reports artifact-test results.
 
 All notable changes to Pipeline are documented in this file.
 
