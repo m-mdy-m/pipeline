@@ -1,0 +1,27 @@
+# Copy this file to .github/workflows/check.yml in your project.
+name: Project checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/pipeline
+          ref: v1.0.0
+          path: .pipeline
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run the project's task graph
+        run: python .pipeline/scripts/providers/github/adapter.py task check --json

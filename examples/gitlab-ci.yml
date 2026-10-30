@@ -1,0 +1,18 @@
+# Copy this file to .gitlab-ci.yml in your project.
+image: python:3.12
+
+stages:
+  - test
+
+before_script:
+  - git clone --depth 1 --branch v1.0.0 https://github.com/m-mdy-m/pipeline.git .pipeline
+
+pipeline-check:
+  stage: test
+  script:
+    - python .pipeline/scripts/providers/gitlab/adapter.py run check --json
+  artifacts:
+    when: always
+    paths:
+      - .pipeline-artifacts/
+    expire_in: 7 days

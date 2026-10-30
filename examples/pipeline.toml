@@ -1,0 +1,18 @@
+schema_version = 1
+
+[project]
+name = "hello-project"
+description = "A small example task graph"
+
+[defaults]
+timeout_seconds = 60
+fail_fast = true
+
+[tasks.greet]
+description = "Print a greeting"
+command = ["python", "-c", "print('Hello from pipeline')"]
+
+[tasks.finish]
+description = "Run after the greeting"
+command = ["python", "-c", "print('All done')"]
+depends_on = ["greet"]

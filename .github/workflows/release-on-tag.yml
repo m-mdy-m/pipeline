@@ -1,0 +1,29 @@
+name: Release on version tag
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish the tagged version
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      pipeline-ref: ${{ github.ref_name }}
+      test-command: python scripts/providers/github/adapter.py task check --json
+      build-command: |
+        set -euo pipefail
+        mkdir -p dist
+        git archive --format=tar.gz \
+          --prefix="pipeline-${GITHUB_REF_NAME}/" \
+          --output="dist/pipeline-${GITHUB_REF_NAME}.tar.gz" \
+          "$GITHUB_SHA"
+      artifact-path: dist/*
+      working-directory: .
+      changelog-path: CHANGELOG.md
