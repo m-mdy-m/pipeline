@@ -98,6 +98,8 @@ Each stage is recorded as `.pipeline-artifacts/release-targets/<target>/<stage>.
 
 Set `dry-run: true` when calling the workflow. It still validates the tag or development version, runs tests and builds, collects assets, and creates checksums. It skips the GitHub Release publishing job.
 
+The source package resolves one canonical `release_tag` in `release-meta.json`. A tag build keeps its validated tag (for example, `v1.2.3`); a branch dry-run gets a deterministic development tag such as `v0.0.0-dev.abcdef0`. The reusable workflow forwards that value as `PIPELINE_RELEASE_TAG` to each build command. Build scripts should use this value for artifact names rather than reading the CI branch name themselves.
+
 The repository's `github-release-smoke.yml` workflow uses this mode on branch changes.
 
 ## Publish a source-only release

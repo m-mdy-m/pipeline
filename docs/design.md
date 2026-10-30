@@ -8,7 +8,7 @@ pipeline separates task definitions, shared execution logic, provider integratio
 
 ## 2. Installable source package
 
-All runtime code lives in `src/pipeline/` and is installable through `pyproject.toml`.
+All runtime code lives in `src/pipeline/` and is installable through `pyproject.toml`. This is the one authoritative implementation: reusable behavior is added here first and provider workflows call it through the package CLI. A workflow must not become an alternate home for task planning, release decisions, artifact validation, or other shared business logic.
 
 | Package | Responsibility |
 | --- | --- |
@@ -31,7 +31,9 @@ Adapters under `src/pipeline/providers/` translate environment details:
 
 After translation, each adapter calls the same task core. It does not duplicate task scheduling or execution logic.
 
-Workflow files under `.github/workflows/` tell GitHub when to start a job, which runner to use, and how to use GitHub features such as Actions artifacts, Releases, Docker publishing, npm/PyPI publishing, or Pages deployment. Reusable workflows declare `on: workflow_call` and can be referenced by another repository. GitLab uses `.gitlab-ci.yml` for its scheduling and artifact rules.
+Workflow files under `.github/workflows/` are the GitHub provider: they schedule jobs, select runners, provision provider-specific toolchains, pass context into `src/pipeline/`, and call GitHub services such as Actions artifacts, Releases, Docker publishing, npm/PyPI publishing, or Pages deployment. Reusable workflows declare `on: workflow_call` and can be referenced by another repository. GitLab uses `.gitlab-ci.yml` for the equivalent scheduling, credentials, artifact transport, and publishing integration.
+
+Provider code is intentionally thin. It may translate environment variables and invoke the source package; shared logic stays in `src/pipeline/`. Local execution uses the same core without a hosted CI provider.
 
 ## What pipeline does not do
 

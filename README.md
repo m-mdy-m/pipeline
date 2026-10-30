@@ -5,7 +5,9 @@
 
 **pipeline** is a small task runner and reusable CI workflow toolkit. Define build, test, and release tasks once in `pipeline.toml`, then run the same task graph locally, in GitHub Actions, or in GitLab CI.
 
-GitHub and GitLab still schedule jobs and store artifacts. pipeline provides the shared task engine, provider adapters, reusable GitHub workflows, and portable release and benchmark helpers.
+**Source of truth:** the authoritative implementation lives in `src/pipeline/`. Task validation and execution, release preparation, release-target execution, benchmarks, packaging checks, and shared utilities belong to this installable package. GitHub Actions, GitLab CI, and local execution are providers around that implementation; they must not duplicate its behavior.
+
+GitHub and GitLab schedule jobs and provide CI-specific services such as runners, credentials, caches, artifact transfer, and publishing. Their workflow files are provider configuration, not a second implementation of pipeline.
 
 ## Install
 

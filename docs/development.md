@@ -29,11 +29,11 @@ The test suite covers configuration, task execution, all provider adapters, shar
 | Provider environment translation | `src/pipeline/providers/` |
 | Benchmark behavior | `src/pipeline/benchmark/` |
 | Build and source release behavior | `src/pipeline/release/` |
-| GitHub job orchestration | `.github/workflows/` |
+| GitHub CI/CD integration (scheduling, runner setup, artifact transport, publish APIs) | `.github/workflows/` |
 | GitLab job orchestration | `.gitlab-ci.yml` |
 | User-facing explanations and examples | `docs/` and `examples/` |
 
-A useful rule is: behavior shared between environments belongs in the Python package; service-specific scheduling, credentials, artifact actions, and publishing belong in the provider workflow.
+The source-first rule is mandatory: implement shared behavior in `src/pipeline/` first, add tests for it, and then make each provider call that implementation. Provider adapters may translate CI variables into `PIPELINE_*` values; provider workflows may schedule jobs, install runner toolchains, handle credentials, transfer artifacts, and call the provider's publishing APIs. Do not put task, release, packaging, or verification logic directly into GitHub/GitLab workflow YAML or duplicate it between providers.
 
 ## Run focused tests
 

@@ -1,6 +1,6 @@
 # Providers and reusable GitHub workflows
 
-The task engine reads one `pipeline.toml` file. A provider adapter translates the host's environment into the portable `PIPELINE_*` contract; the core does not need to know whether a task started locally, in GitHub Actions, or in GitLab CI.
+The authoritative implementation is the installable `src/pipeline/` package. It reads one `pipeline.toml` file and owns task planning, execution, shared release/benchmark behavior, and validation. A provider adapter only translates host environment into the portable `PIPELINE_*` contract and invokes that package; it does not implement the task or release logic. GitHub Actions and GitLab CI supply scheduling, runner setup, credentials, artifact transport, and provider publishing APIs.
 
 ## Run locally
 

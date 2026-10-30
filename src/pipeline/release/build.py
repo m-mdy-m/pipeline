@@ -83,6 +83,9 @@ def prepare_release(
         raise BuildReleaseError(f"Cannot read changelog {changelog}: {exc}") from exc
 
     prerelease = "-" in version
+    # Keep artifact identity independent from the provider ref (for example,
+    # a branch dry-run on "main"). This is the canonical source-owned release tag.
+    release_tag = ref_name if ref_type == "tag" else f"v{version}"
     notes = _section(changelog_text, version)
     if notes is None and prerelease and ref_type == "tag":
         notes = _section(changelog_text, version.split("-", 1)[0])
@@ -113,6 +116,7 @@ def prepare_release(
         "schema_version": 1,
         "version": version,
         "tag": ref_name if ref_type == "tag" else "",
+        "release_tag": release_tag,
         "ref_type": ref_type,
         "ref_name": ref_name,
         "commit_sha": commit_sha,

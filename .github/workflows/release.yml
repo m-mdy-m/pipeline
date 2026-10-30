@@ -82,6 +82,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
@@ -127,6 +128,7 @@ jobs:
           metadata = json.loads(Path("release-preparation/release-meta.json").read_text(encoding="utf-8"))
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
               output.write(f"version={metadata['version']}\n")
+              output.write(f"release_tag={metadata['release_tag']}\n")
               output.write(f"prerelease={str(metadata['prerelease']).lower()}\n")
           PY
 
@@ -241,6 +243,7 @@ jobs:
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
+          PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
@@ -252,6 +255,7 @@ jobs:
           PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
+          PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 

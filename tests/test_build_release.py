@@ -41,6 +41,7 @@ class BuildReleaseTests(unittest.TestCase):
             )
             notes = (root / "out" / "release-notes.md").read_text(encoding="utf-8")
             self.assertEqual(result["version"], "1.2.3")
+            self.assertEqual(result["release_tag"], "v1.2.3")
             self.assertFalse(result["prerelease"])
             self.assertIn("- feature", notes)
             self.assertNotIn("- future", notes)
@@ -73,6 +74,7 @@ class BuildReleaseTests(unittest.TestCase):
             )
             notes = (root / "out" / "release-notes.md").read_text(encoding="utf-8")
             self.assertEqual(result["version"], "0.0.0-dev.abcdef0")
+            self.assertEqual(result["release_tag"], "v0.0.0-dev.abcdef0")
             self.assertTrue(result["prerelease"])
             self.assertIn("- current work", notes)
 
