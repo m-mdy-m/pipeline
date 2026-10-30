@@ -198,7 +198,8 @@ jobs:
           msystem: ${{ matrix.msys2_msystem }}
           path-type: inherit
           update: false
-          install: ${{ matrix.msys2_packages }}
+          # The action prunes its package cache with paccache; MSYS2 ships it in pacman-contrib.
+          install: pacman-contrib ${{ matrix.msys2_packages }}
 
       # Keep runner-context checks in step-level if conditions. The runner context
       # is not available while evaluating the shell property. The shared src runner
