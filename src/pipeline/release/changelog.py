@@ -122,3 +122,28 @@ def extract_version_section(changelog: str, version: str, path: str) -> str:
     if not section:
         raise ReleaseError(f"Version section {version} in '{path}' is empty")
     return section + "\n"
+
+
+def extract_dry_run_section(changelog: str, path: str) -> str:
+    """Resolve branch dry-run notes without requiring an Unreleased heading.
+
+    Keep an explicit Unreleased section authoritative. For release-only
+    changelogs, use the first versioned section (Keep a Changelog order is
+    newest first) as the informational dry-run notes.
+    """
+    unreleased_count = sum(
+        bool(re.match(r"^\\s{0,3}(#{1,6})\\s+\\[?Unreleased\\]?\\s*$", line, re.IGNORECASE))
+        for line in changelog.splitlines()
+    )
+    if unreleased_count:
+        return extract_unreleased_section(changelog, path)
+
+    for line in changelog.splitlines():
+        _, version = heading_info(line)
+        if version is not None:
+            return extract_version_section(changelog, version, path)
+
+    raise ReleaseError(
+        f"Dry-run changelog '{path}' must contain an 'Unreleased' section "
+        "or at least one version-specific section."
+    )

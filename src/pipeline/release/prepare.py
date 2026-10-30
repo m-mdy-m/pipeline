@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 from typing import Iterable, Sequence
 
 
-from .changelog import decode_changelog, detect_changelog, extract_unreleased_section, extract_version_section, heading_info
+from .changelog import decode_changelog, detect_changelog, extract_dry_run_section, extract_version_section, heading_info
 from .errors import ReleaseError
 from .git_snapshot import collect_entries, read_blob
 from ..common.logging import logger
@@ -73,7 +73,7 @@ def prepare() -> None:
             has_exact_heading = any(heading_info(line)[1] == version for line in changelog_text.splitlines())
             if not dry_run_branch or has_exact_heading:
                 raise
-            section_for_notes = extract_unreleased_section(changelog_text, changelog_entry.path)
+            section_for_notes = extract_dry_run_section(changelog_text, changelog_entry.path)
 
     # Release notes are prepared independently from the ZIP. Even if changelog is
     # optional, a configured release-notes file must be a tracked UTF-8 regular file.

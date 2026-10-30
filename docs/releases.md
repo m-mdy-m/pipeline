@@ -9,7 +9,7 @@ A source ZIP does not compile your project. A build release does not replace the
 
 ## Release this repository
 
-A push of a version tag such as `v1.0.0` starts `.github/workflows/release-on-tag.yml`.
+A push of a version tag such as `v1.1.1` starts `.github/workflows/release-on-tag.yml`.
 
 That workflow calls the reusable build-release workflow in this repository. It:
 
@@ -20,13 +20,13 @@ That workflow calls the reusable build-release workflow in this repository. It:
 5. Generates a SHA-256 checksum file for the release assets.
 6. Publishes the notes, archive, and checksums as a GitHub Release.
 
-The workflow does not publish a release from a normal branch push. To publish version `1.0.0`, the tag must be named `v1.0.0` and pushed to GitHub after the version section has been added to `CHANGELOG.md`.
+The workflow does not publish a release from a normal branch push. To publish version `1.1.1`, the tag must be named `v1.1.1` and pushed to GitHub after the version section has been added to `CHANGELOG.md`.
 
 From a checkout that contains the release commit:
 
 ~~~sh
-git tag -a v1.0.0 -m "pipeline 1.0.0"
-git push origin v1.0.0
+git tag -a v1.1.1 -m "pipeline 1.0.0"
+git push origin v1.1.1
 ~~~
 
 The tag points to the current commit. If you change the changelog or code after creating the tag, create a new version tag rather than moving the old one.
@@ -97,7 +97,7 @@ Use `dry-run: true` to test the packaging path without publishing.
 
 Tags use this format:
 
-- Stable: `vMAJOR.MINOR.PATCH`, for example `v1.0.0`.
+- Stable: `vMAJOR.MINOR.PATCH`, for example `v1.1.1`.
 - Prerelease: `vMAJOR.MINOR.PATCH-alpha.N`, `-beta.N`, or `-rc.N`.
 
 Before creating a stable tag, add a matching heading to the changelog:
@@ -110,7 +110,7 @@ Before creating a stable tag, add a matching heading to the changelog:
 - Describe what is new.
 ~~~
 
-A stable release without its matching changelog section is rejected. Prerelease and dry-run builds can fall back to the `[Unreleased]` section.
+A stable release without its matching changelog section is rejected. Prerelease builds and dry-runs prefer the `[Unreleased]` section. For source-release branch dry-runs, when `[Unreleased]` is absent, the helper uses the newest version-specific section as informational release notes.
 
 ## Permissions and secrets
 

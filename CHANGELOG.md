@@ -4,6 +4,16 @@ All notable changes to Pipeline are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-10-30
+
+### Fixed
+
+- Fixed source-release branch dry-runs for changelogs that contain only versioned sections and no `[Unreleased]` heading.
+- Source-release dry-runs now prefer `[Unreleased]` when present and otherwise use the newest version-specific section.
+- Added regression coverage for release-only changelogs and invalid `Unreleased` sections.
+
+---
+
 ## [1.1.0] - 2026-10-30
 
 ### Added

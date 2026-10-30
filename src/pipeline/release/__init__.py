@@ -1,7 +1,7 @@
 """Composable source and build release tooling."""
 
 from .archive import validate_zip, zip_add_file
-from .changelog import decode_changelog, detect_changelog, extract_unreleased_section, extract_version_section, heading_info
+from .changelog import decode_changelog, detect_changelog, extract_dry_run_section, extract_unreleased_section, extract_version_section, heading_info
 from .cli import main
 from .build import BuildReleaseError, assemble_release_assets, prepare_release
 from .errors import ReleaseError
@@ -16,7 +16,7 @@ from .tools import atomic_write_text, env, git_output, run_command, run_git, sha
 
 __all__ = [
     "ReleaseError", "BuildReleaseError", "TreeEntry", "main", "prepare", "package", "prepare_release", "assemble_release_assets", "decode_changelog",
-    "detect_changelog", "extract_unreleased_section", "extract_version_section", "heading_info",
+    "detect_changelog", "extract_dry_run_section", "extract_unreleased_section", "extract_version_section", "heading_info",
     "collect_entries", "parse_ls_tree", "read_blob", "any_pattern", "glob_match",
     "path_exists_as_directory", "safe_repo_path", "validate_patterns", "validate_symlinks",
     "build_names", "validate_tag_and_version", "compose_gitleaks_config", "validate_allowlist_path",
