@@ -98,6 +98,41 @@ class ReleaseTargetTests(unittest.TestCase):
             self.assertEqual(result["exit_code"], 17)
             self.assertIn("status 17", result["error"])
 
+    def test_artifact_test_stage_records_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = execute_target_stage(
+                target="linux-amd64",
+                stage="artifact-test",
+                command="printf 'downloaded artifact verified\\n'",
+                workspace=root,
+                report_directory=".reports",
+            )
+            report = root / ".reports" / "linux-amd64" / "artifact-test.json"
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "succeeded")
+            self.assertEqual(payload["stage"], "artifact-test")
+            self.assertEqual(payload["exit_code"], 0)
+
+    def test_summary_includes_artifact_test_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for stage in ("test", "build", "artifact-test"):
+                execute_target_stage(
+                    target="darwin-arm64",
+                    stage=stage,
+                    command="true",
+                    workspace=root,
+                    report_directory=".reports",
+                )
+            summary = render_target_summary(
+                target="darwin-arm64",
+                workspace=root,
+                report_directory=".reports",
+            )
+            self.assertIn("| artifact-test | succeeded | 0 |", summary)
+            self.assertIn("All recorded target stages completed successfully.", summary)
+
     def test_summary_includes_both_stages_and_failure_details(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

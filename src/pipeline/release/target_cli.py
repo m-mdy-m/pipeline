@@ -15,9 +15,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    run = commands.add_parser("run", help="run one test or build stage")
+    run = commands.add_parser("run", help="run one test, build, or artifact-test stage")
     run.add_argument("--target", required=True)
-    run.add_argument("--stage", required=True, choices=("test", "build"))
+    run.add_argument("--stage", required=True, choices=("test", "build", "artifact-test"))
     run.add_argument("--command-env", default="PIPELINE_RELEASE_COMMAND")
     run.add_argument("--working-directory", default=".")
     run.add_argument("--report-directory", default=".pipeline-artifacts/release-targets")

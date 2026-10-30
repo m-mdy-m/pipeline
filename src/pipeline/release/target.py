@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 _TARGET = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
-_STAGES = {"test", "build"}
+_STAGES = {"test", "build", "artifact-test"}
 
 
 class ReleaseTargetError(ValueError):
@@ -216,7 +216,7 @@ def render_target_summary(
     root = Path(workspace or Path.cwd()).expanduser().resolve()
     reports = _inside(root, root / report_directory, label="Report directory") / target
     rows: list[dict[str, Any]] = []
-    for stage in ("test", "build"):
+    for stage in ("test", "build", "artifact-test"):
         path = reports / f"{stage}.json"
         if not path.is_file():
             continue
@@ -240,13 +240,13 @@ def render_target_summary(
             f"{row['duration_seconds']:.3f}s |"
         )
     if not rows:
-        lines.extend(["| — | No stage report was produced | — | — |", "", "The target runner did not record a test or build stage."])
+        lines.extend(["| — | No stage report was produced | — | — |", "", "The target runner did not record a test, build, or artifact-test stage."])
     failures = [row for row in rows if row["status"] != "succeeded"]
     if failures:
         lines.extend(["", "### Failure details"])
         for row in failures:
             lines.append(f"- **{row['stage']}**: {row['error'] or 'command failed'}")
-    elif len(rows) == 2:
+    elif rows and all(row["status"] == "succeeded" for row in rows):
         lines.extend(["", "All recorded target stages completed successfully."])
     lines.append("")
     return "\n".join(lines)
