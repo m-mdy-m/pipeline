@@ -109,7 +109,7 @@ def prepare_release(
     notes = _section(changelog_text, version)
     if notes is None and prerelease and ref_type == "tag":
         notes = _section(changelog_text, version.split("-", 1)[0])
-    if notes is None:
+    if notes is None and (dry_run_value or prerelease):
         notes = _section(changelog_text, "Unreleased")
 
     if notes is None:
