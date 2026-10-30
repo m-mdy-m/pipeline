@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [1.1.1] - 2026-10-30
 
+### Changed
+
+- Replaced the MIT license with Mozilla Public License 2.0 (MPL-2.0), adding file-level copyleft and an explicit contributor patent grant.
+- Updated Python package metadata to use the SPDX `MPL-2.0` expression.
+
 ### Fixed
 
 - Fixed source-release branch dry-runs for changelogs that contain only versioned sections and no `[Unreleased]` heading.
