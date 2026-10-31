@@ -201,6 +201,16 @@ jobs:
           go-version: ${{ inputs.go-version }}
           cache: true
 
+      # Some matrix targets (for example, Android/Gradle) need a JDK in
+      # addition to Go and Node. Keep it opt-in per target to avoid installing
+      # Java on unrelated Linux, macOS, Windows, and Web jobs.
+      - name: Set up Java
+        if: matrix.java_version != null && matrix.java_version != ''
+        uses: actions/setup-java@v6
+        with:
+          distribution: ${{ matrix.java_distribution || 'temurin' }}
+          java-version: ${{ matrix.java_version }}
+
       - name: Set up Node.js
         if: inputs.setup-node
         uses: actions/setup-node@v7
