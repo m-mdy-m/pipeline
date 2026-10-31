@@ -78,6 +78,26 @@ For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix 
 
 A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
+### Branch dry-runs and tag releases
+
+Keep branch validation and production publication in separate caller workflows. A caller triggered by `push.branches` (and optionally `pull_request`) sets `dry-run: true`; it compiles, uploads, downloads and inspects every configured target, but does not create a release. A separate caller triggered only by `push.tags` uses `dry-run: false` and is the only path that publishes release assets. A branch filter does not match tag pushes, so the two runs cannot accidentally overlap.
+
+~~~yaml
+on:
+  push:
+    branches: ["**"]
+jobs:
+  dry_run:
+    uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
+    with:
+      pipeline-ref: main
+      test-command: make check
+      build-command: make release
+      dry-run: true
+~~~
+
+The release caller should use `push.tags: ["v*"]`, explicitly set `dry-run: false`, and map its signing secrets. Do not add a tag trigger to the branch dry-run workflow or a branch trigger to the production release workflow. Store signing materials only in the caller repository's Actions secrets; the shared Pipeline forwards them only to the matching production build step.
+
 ### Test the packaged artifact on its native runner
 
 The optional `artifact-test-command` runs after the target's build artifacts have been uploaded and downloaded again on that same native runner. The reusable workflow passes the command to the provider-neutral release target runner as the `artifact-test` stage; it does not execute or interpret the test command itself. The downloaded files are exposed to the test command through `PIPELINE_ARTIFACT_TEST_DIR`; the provider owns the temporary directory and download transport. GitHub downloads are attempted up to three times in isolated temporary directories to tolerate transient artifact-storage failures.

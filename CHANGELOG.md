@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Made Android SDK provisioning and mobile store-signing secret forwarding part of the reusable release workflow's provider-neutral execution contract.
+- Documented non-overlapping branch-push dry-runs and version-tag production releases.
+
+
 ### Added
 
 - Added a provider-neutral build-target catalogue for Linux, macOS, Windows x86/x86_64/ARM64, Android ABIs, iOS device/simulator architectures, and PWA outputs.

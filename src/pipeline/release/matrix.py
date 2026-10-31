@@ -27,6 +27,8 @@ TARGET_CATALOG: dict[str, dict[str, str]] = {
     "android-arm64-v8a": {"target_os": "android", "architecture": "arm64", "platform": "mobile", "abi": "arm64-v8a"},
     "android-x86": {"target_os": "android", "architecture": "x86", "platform": "mobile", "abi": "x86"},
     "android-x86_64": {"target_os": "android", "architecture": "x86_64", "platform": "mobile", "abi": "x86_64"},
+    "android-play-aab": {"target_os": "android", "architecture": "multi", "platform": "mobile", "abi": "all"},
+    "ios-app-store-ipa": {"target_os": "ios", "architecture": "arm64", "platform": "mobile", "abi": "app-store"},
     "ios-arm64": {"target_os": "ios", "architecture": "arm64", "platform": "mobile", "abi": "device"},
     "ios-simulator-arm64": {"target_os": "ios-simulator", "architecture": "arm64", "platform": "mobile", "abi": "simulator"},
     "ios-simulator-x86_64": {"target_os": "ios-simulator", "architecture": "x86_64", "platform": "mobile", "abi": "simulator"},

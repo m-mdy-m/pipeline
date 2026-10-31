@@ -22,6 +22,20 @@ Closes #
 - [ ] Public CLI/configuration contracts are documented
 - [ ] CHANGELOG updated
 
+## Trigger and publication policy
+
+- [ ] Every branch push validates with `dry-run: true`
+- [ ] Only version-tag pushes use `dry-run: false`
+- [ ] Branch filters and tag filters are separate; a tag cannot enter a branch dry-run
+- [ ] Release secrets are injected only into the matching production build step
+
+## Native store signing (when applicable)
+
+- [ ] Android production artifact is a signed AAB
+- [ ] iOS production artifact is an App Store signed IPA
+- [ ] Store signing keys and profiles remain in CI secrets
+- [ ] Store metadata, bundle ID, versioning, SDK and signing have been validated
+
 ## Build targets and E2E (when applicable)
 
 - Target IDs / OS / architectures:

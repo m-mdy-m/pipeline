@@ -207,6 +207,31 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
+      - name: Set up Java
+        if: inputs.setup-java && matrix.target_os == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+
+      - name: Set up Android SDK
+        if: inputs.setup-android && matrix.target_os == 'android'
+        shell: bash
+        env:
+          ANDROID_API_LEVEL: ${{ inputs.android-api-level }}
+          ANDROID_BUILD_TOOLS_VERSION: ${{ inputs.android-build-tools-version }}
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [[ -n "$sdk_root" ]] || { echo "Android SDK root is not configured on this runner." >&2; exit 1; }
+          sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager" ]]; then sdkmanager="$(command -v sdkmanager || true)"; fi
+          [[ -n "$sdkmanager" && -x "$sdkmanager" ]] || { echo "Android sdkmanager was not found on this runner." >&2; exit 1; }
+          yes | "$sdkmanager" --licenses >/dev/null
+          "$sdkmanager" --install "platform-tools" "platforms;android-$ANDROID_API_LEVEL" "build-tools;$ANDROID_BUILD_TOOLS_VERSION"
+          java -version
+          "$sdkmanager" --list_installed
+
       - name: Activate pnpm
         if: inputs.setup-node && inputs.pnpm-version != ''
         env:
@@ -265,7 +290,17 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
+          IDIOS_MOBILE_SERVER_URL: ${{ matrix.platform == 'mobile' && secrets['mobile-server-url'] || '' }}
+          IDIOS_ANDROID_KEYSTORE_BASE64: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-keystore-base64'] || '' }}
+          IDIOS_ANDROID_KEYSTORE_PASSWORD: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-keystore-password'] || '' }}
+          IDIOS_ANDROID_KEY_ALIAS: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-key-alias'] || '' }}
+          IDIOS_ANDROID_KEY_PASSWORD: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-key-password'] || '' }}
+          IDIOS_IOS_CERTIFICATE_BASE64: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-signing-certificate-base64'] || '' }}
+          IDIOS_IOS_CERTIFICATE_PASSWORD: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-signing-certificate-password'] || '' }}
+          IDIOS_IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-provisioning-profile-base64'] || '' }}
+          IDIOS_IOS_TEAM_ID: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-team-id'] || '' }}
+          IDIOS_IOS_PROFILE_NAME: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-profile-name'] || '' }}
+          IDIOS_ANDROID_VERSION_CODE: ${{ matrix.android_version_code || inputs['android-version-code'] }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
@@ -278,7 +313,17 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
+          IDIOS_MOBILE_SERVER_URL: ${{ matrix.platform == 'mobile' && secrets['mobile-server-url'] || '' }}
+          IDIOS_ANDROID_KEYSTORE_BASE64: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-keystore-base64'] || '' }}
+          IDIOS_ANDROID_KEYSTORE_PASSWORD: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-keystore-password'] || '' }}
+          IDIOS_ANDROID_KEY_ALIAS: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-key-alias'] || '' }}
+          IDIOS_ANDROID_KEY_PASSWORD: ${{ matrix.id == 'android-play-aab' && secrets['android-signing-key-password'] || '' }}
+          IDIOS_IOS_CERTIFICATE_BASE64: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-signing-certificate-base64'] || '' }}
+          IDIOS_IOS_CERTIFICATE_PASSWORD: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-signing-certificate-password'] || '' }}
+          IDIOS_IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-provisioning-profile-base64'] || '' }}
+          IDIOS_IOS_TEAM_ID: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-team-id'] || '' }}
+          IDIOS_IOS_PROFILE_NAME: ${{ matrix.id == 'ios-app-store-ipa' && secrets['ios-profile-name'] || '' }}
+          IDIOS_ANDROID_VERSION_CODE: ${{ matrix.android_version_code || inputs['android-version-code'] }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
@@ -373,7 +418,7 @@ jobs:
           PYTHONPATH: .pipeline/src
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
-          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
+          IDIOS_MOBILE_SERVER_URL: ${{ matrix.platform == 'mobile' && secrets['mobile-server-url'] || '' }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
@@ -386,7 +431,7 @@ jobs:
         env:
           PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
-          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
+          IDIOS_MOBILE_SERVER_URL: ${{ matrix.platform == 'mobile' && secrets['mobile-server-url'] || '' }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
@@ -400,7 +445,7 @@ jobs:
           PYTHONPATH: .pipeline/src
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
-          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
+          IDIOS_MOBILE_SERVER_URL: ${{ matrix.platform == 'mobile' && secrets['mobile-server-url'] || '' }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
@@ -413,7 +458,7 @@ jobs:
         env:
           PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
-          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
+          IDIOS_MOBILE_SERVER_URL: ${{ matrix.platform == 'mobile' && secrets['mobile-server-url'] || '' }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
