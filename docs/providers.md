@@ -1,4 +1,4 @@
-# Providers and reusable GitHub workflows
+# Provider adapters and reusable workflows
 
 The authoritative implementation is the installable `src/pipeline/` package. It reads one `pipeline.toml` file and owns task planning, execution, shared release/benchmark behavior, and validation. A provider adapter only translates host environment into the portable `PIPELINE_*` contract and invokes that package; it does not implement the task or release logic. GitHub Actions and GitLab CI supply scheduling, runner setup, credentials, artifact transport, and provider publishing APIs.
 
@@ -42,26 +42,47 @@ When pipeline is checked out as a helper directory, keep the caller project as t
 
 For repeatable builds, replace `main` with a reviewed release tag or full commit SHA. The GitHub adapter also has a `bootstrap` mode that writes normalized context into `GITHUB_ENV` for later steps in the same job.
 
-## Use the adapter from GitLab CI
+## Provider-owned workflow sources
+
+The provider adapter implementation lives under `src/pipeline/providers/`.
+Workflow files follow each CI host's discovery rules:
+
+- **GitHub Actions:** reusable workflows are kept in the repository's
+  `.github/workflows/` directory. GitHub requires reusable workflow files to
+  live there, so `ci.yml`, `release.yml`, and the other GitHub workflow
+  entry points are maintained in that directory in this repository. Callers
+  reference those canonical files directly; do not copy their logic into an
+  application repository.
+- **GitLab CI:** the reusable template is maintained at
+  `src/pipeline/providers/gitlab/workflows/ci.yml`. The root
+  `.gitlab-ci.yml` is only a thin local include so this repository tests the
+  same source that downstream projects consume.
+
+### Use the shared CI workflow from GitLab
+
+For this repository, `.gitlab-ci.yml` includes the provider template from the
+current checkout:
 
 ~~~yaml
-image: python:3.12
-
-stages:
-  - verify
-
-pipeline:
-  stage: verify
-  script:
-    - PYTHONPATH=src python -m pipeline.providers.gitlab run check --json
-  artifacts:
-    when: always
-    paths:
-      - .pipeline-artifacts/
-    expire_in: 7 days
+include:
+  - local: /src/pipeline/providers/gitlab/workflows/ci.yml
 ~~~
 
-For a separate helper checkout, clone pipeline into `.pipeline` and set `PYTHONPATH=.pipeline/src` before running `python -m pipeline.providers.gitlab`.
+For another GitLab project, include the canonical template from the shared
+repository instead of copying it:
+
+~~~yaml
+include:
+  - remote: https://raw.githubusercontent.com/m-mdy-m/pipeline/main/src/pipeline/providers/gitlab/workflows/ci.yml
+~~~
+
+The template uses the local `src/pipeline` checkout when the current project
+is the pipeline repository. For downstream projects it checks out the shared
+helper repository at `PIPELINE_HELPER_REF` (default: `main`), then runs the
+calling project's root `pipeline.toml` through
+`python -m pipeline.providers.gitlab run check --json`. Set
+`PIPELINE_HELPER_REF` to a reviewed tag or full commit SHA for reproducible
+builds.
 
 ## Shared provider context
 
