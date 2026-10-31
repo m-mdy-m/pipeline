@@ -94,7 +94,6 @@ build-matrix-json: >-
 
 Each stage is recorded as `.pipeline-artifacts/release-targets/<target>/<stage>.json` and included in the shared target summary. An artifact-test failure fails that target and prevents release assembly and publication. A project using another CI host can download its own artifact and invoke the same core stage with `python -m pipeline.release.target_cli run --target <target> --stage artifact-test`, setting `PIPELINE_RELEASE_COMMAND` to the project-owned test command. The CI provider is responsible only for its own artifact transfer and native-runner setup.
 
-
 ### Configure native E2E checks per target
 
 The release workflow separates artifact inspection from end-to-end behavior. Configure either workflow-level defaults or per-target commands:
