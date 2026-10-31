@@ -243,12 +243,22 @@ def render_target_summary(
             raise ReleaseTargetError(f"Unexpected report identity in {path}")
         rows.append(payload)
 
-    lines = [
-        f"## Release target: `{target}`",
-        "",
+    metadata = next(
+        (row for row in reversed(rows) if any(row.get(key) for key in ("target_os", "architecture", "abi", "platform"))),
+        {},
+    )
+    lines = [f"## Release target: `{target}`", ""]
+    target_details = [
+        f"{metadata.get('target_os') or 'unknown OS'}/{metadata.get('architecture') or 'unknown architecture'}",
+        f"ABI: {metadata.get('abi')}" if metadata.get("abi") else "",
+        f"Platform: {metadata.get('platform')}" if metadata.get("platform") else "",
+    ]
+    if metadata:
+        lines.extend(["**Output target:** " + " · ".join(item for item in target_details if item), ""])
+    lines.extend([
         "| Stage | Result | Exit code | Duration |",
         "| --- | --- | ---: | ---: |",
-    ]
+    ])
     for row in rows:
         lines.append(
             f"| {row['stage']} | {row['status']} | {row['exit_code']} | "

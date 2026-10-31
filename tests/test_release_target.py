@@ -189,22 +189,17 @@ class ReleaseTargetTests(unittest.TestCase):
                 abi="arm64-v8a",
                 platform="mobile",
             )
-            test = execute_target_stage(
-                target="android-arm64-v8a",
-                stage="e2e-test",
-                command="test \"$PIPELINE_TARGET_ABI\" = arm64-v8a && test -d \"$PIPELINE_ARTIFACT_TEST_DIR\"",
-                workspace=root,
-                report_directory=".reports",
-                target_os="android",
-                architecture="arm64-v8a",
-                abi="arm64-v8a",
-                platform="mobile",
-            ) if False else None
             self.assertEqual(setup["status"], "succeeded")
             self.assertEqual(setup["target_os"], "android")
             self.assertEqual(setup["architecture"], "arm64-v8a")
             payload = json.loads((root / ".reports" / "android-arm64-v8a" / "e2e-setup.json").read_text())
             self.assertEqual(payload["platform"], "mobile")
+            summary = render_target_summary(
+                target="android-arm64-v8a",
+                workspace=root,
+                report_directory=".reports",
+            )
+            self.assertIn("Output target: android/arm64-v8a", summary)
 
     def test_e2e_test_is_recorded_as_a_distinct_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
