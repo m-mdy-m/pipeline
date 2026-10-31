@@ -31,6 +31,7 @@ pipeline-gitlab = "pipeline.providers.gitlab.adapter:main"
 pipeline-benchmark = "pipeline.benchmark.runner:main"
 pipeline-build-release = "pipeline.release.build_cli:main"
 pipeline-release-target = "pipeline.release.target_cli:main"
+pipeline-build-targets = "pipeline.release.matrix_cli:main"
 pipeline-source-release = "pipeline.release.cli:main"
 pipeline-verify-source-release = "pipeline.release.verify_cli:main"
 

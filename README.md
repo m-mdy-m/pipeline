@@ -19,6 +19,8 @@ cd pipeline
 python -m pip install -e .
 ~~~
 
+Inspect supported native and cross-platform release target descriptors with `pipeline-build-targets list`.
+
 Run the task runner:
 
 ~~~sh

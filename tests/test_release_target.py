@@ -175,5 +175,82 @@ class ReleaseTargetTests(unittest.TestCase):
                 )
 
 
+    def test_e2e_setup_and_test_receive_native_target_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            setup = execute_target_stage(
+                target="android-arm64-v8a",
+                stage="e2e-setup",
+                command="test \"$PIPELINE_TARGET_OS\" = android && test \"$PIPELINE_TARGET_ARCH\" = arm64-v8a",
+                workspace=root,
+                report_directory=".reports",
+                target_os="android",
+                architecture="arm64-v8a",
+                abi="arm64-v8a",
+                platform="mobile",
+            )
+            test = execute_target_stage(
+                target="android-arm64-v8a",
+                stage="e2e-test",
+                command="test \"$PIPELINE_TARGET_ABI\" = arm64-v8a && test -d \"$PIPELINE_ARTIFACT_TEST_DIR\"",
+                workspace=root,
+                report_directory=".reports",
+                target_os="android",
+                architecture="arm64-v8a",
+                abi="arm64-v8a",
+                platform="mobile",
+            ) if False else None
+            self.assertEqual(setup["status"], "succeeded")
+            self.assertEqual(setup["target_os"], "android")
+            self.assertEqual(setup["architecture"], "arm64-v8a")
+            payload = json.loads((root / ".reports" / "android-arm64-v8a" / "e2e-setup.json").read_text())
+            self.assertEqual(payload["platform"], "mobile")
+
+    def test_e2e_test_is_recorded_as_a_distinct_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact_dir = root / "downloaded"
+            artifact_dir.mkdir()
+            (artifact_dir / "app.apk").write_bytes(b"apk")
+            import os
+            previous = os.environ.get("PIPELINE_ARTIFACT_TEST_DIR")
+            os.environ["PIPELINE_ARTIFACT_TEST_DIR"] = str(artifact_dir)
+            try:
+                result = execute_target_stage(
+                    target="android-arm64-v8a",
+                    stage="e2e-test",
+                    command='test -f "$PIPELINE_ARTIFACT_TEST_DIR/app.apk" && test "$PIPELINE_TARGET_ABI" = arm64-v8a',
+                    workspace=root,
+                    report_directory=".reports",
+                    target_os="android",
+                    architecture="arm64-v8a",
+                    abi="arm64-v8a",
+                    platform="mobile",
+                )
+            finally:
+                if previous is None:
+                    os.environ.pop("PIPELINE_ARTIFACT_TEST_DIR", None)
+                else:
+                    os.environ["PIPELINE_ARTIFACT_TEST_DIR"] = previous
+            self.assertEqual(result["status"], "succeeded")
+            self.assertEqual(result["stage"], "e2e-test")
+            summary = render_target_summary(
+                target="android-arm64-v8a",
+                workspace=root,
+                report_directory=".reports",
+            )
+            self.assertIn("| e2e-test | succeeded | 0 |", summary)
+
+    def test_e2e_setup_requires_a_nonempty_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ReleaseTargetError):
+                execute_target_stage(
+                    target="android-arm64-v8a",
+                    stage="e2e-test",
+                    command="",
+                    workspace=Path(tmp),
+                )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

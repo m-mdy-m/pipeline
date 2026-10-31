@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 _TARGET = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
-_STAGES = {"test", "build", "artifact-test"}
+_STAGES = {"test", "build", "artifact-test", "e2e-setup", "e2e-test"}
 
 
 class ReleaseTargetError(ValueError):
@@ -116,6 +116,10 @@ def execute_target_stage(
     workspace: str | Path | None = None,
     report_directory: str | Path = ".pipeline-artifacts/release-targets",
     shell: str = "bash",
+    target_os: str = "",
+    architecture: str = "",
+    abi: str = "",
+    platform: str = "",
 ) -> dict[str, Any]:
     """Run a stage through Bash, stream combined output live, and save its result."""
     if not _TARGET.fullmatch(target):
@@ -146,6 +150,13 @@ def execute_target_stage(
     exit_code = 127
     error = ""
     environment = os.environ.copy()
+    target_metadata = {
+        "PIPELINE_TARGET_OS": target_os,
+        "PIPELINE_TARGET_ARCH": architecture,
+        "PIPELINE_TARGET_ABI": abi,
+        "PIPELINE_TARGET_PLATFORM": platform,
+    }
+    environment.update({key: value for key, value in target_metadata.items() if value})
     try:
         resolved_shell = _resolve_shell(shell, environment)
         argv = [resolved_shell, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command]
@@ -177,6 +188,10 @@ def execute_target_stage(
     result = {
         "schema_version": 1,
         "target": target,
+        "target_os": target_os,
+        "architecture": architecture,
+        "abi": abi,
+        "platform": platform,
         "stage": stage,
         "status": status,
         "exit_code": exit_code,
@@ -216,7 +231,7 @@ def render_target_summary(
     root = Path(workspace or Path.cwd()).expanduser().resolve()
     reports = _inside(root, root / report_directory, label="Report directory") / target
     rows: list[dict[str, Any]] = []
-    for stage in ("test", "build", "artifact-test"):
+    for stage in ("test", "build", "artifact-test", "e2e-setup", "e2e-test"):
         path = reports / f"{stage}.json"
         if not path.is_file():
             continue

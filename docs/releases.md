@@ -94,6 +94,53 @@ build-matrix-json: >-
 
 Each stage is recorded as `.pipeline-artifacts/release-targets/<target>/<stage>.json` and included in the shared target summary. An artifact-test failure fails that target and prevents release assembly and publication. A project using another CI host can download its own artifact and invoke the same core stage with `python -m pipeline.release.target_cli run --target <target> --stage artifact-test`, setting `PIPELINE_RELEASE_COMMAND` to the project-owned test command. The CI provider is responsible only for its own artifact transfer and native-runner setup.
 
+
+### Configure native E2E checks per target
+
+The release workflow separates artifact inspection from end-to-end behavior. Configure either workflow-level defaults or per-target commands:
+
+~~~yaml
+e2e-setup-command: bash scripts/e2e/prepare.sh
+e2e-test-command: bash scripts/e2e/run.sh
+build-matrix-json: >-
+  {"include":[
+    {
+      "id":"android-arm64-v8a",
+      "os":"ubuntu-24.04",
+      "target_os":"android",
+      "architecture":"arm64",
+      "abi":"arm64-v8a",
+      "platform":"mobile",
+      "e2e_setup_command":"bash scripts/e2e/start-android-emulator.sh",
+      "e2e_test_command":"bash scripts/e2e/android.sh"
+    },
+    {
+      "id":"ios-simulator-arm64",
+      "os":"macos-15",
+      "target_os":"ios-simulator",
+      "architecture":"arm64",
+      "abi":"simulator",
+      "platform":"mobile",
+      "e2e_setup_command":"bash scripts/e2e/boot-ios-simulator.sh",
+      "e2e_test_command":"bash scripts/e2e/ios.sh"
+    }
+  ]}
+~~~
+
+Each target can override the global commands using `e2e_setup_command` and `e2e_test_command`. An E2E setup command without a matching test command is rejected. Both commands execute through the shared `target_cli` runner, and the E2E test runs only after the build artifact has been downloaded again on the same matrix runner. The downloaded files are available as `PIPELINE_ARTIFACT_TEST_DIR`; target metadata is exposed through `PIPELINE_TARGET_OS`, `PIPELINE_TARGET_ARCH`, `PIPELINE_TARGET_ABI`, and `PIPELINE_TARGET_PLATFORM`.
+
+The setup command is where the project chooses how to start a real device, simulator or emulator, install SDKs, configure test credentials, or start a test service. The E2E command is project-owned and may use Playwright, WebdriverIO, Appium, XCTest, Espresso, Maestro, or a custom harness. Pipeline does not invent an E2E command or pretend that a cross-compiled binary has run on the target. Set the matrix `os` to the native target runner where available; for a different runner architecture, boot a compatible emulator/device in setup and test the downloaded artifact there.
+
+List built-in target descriptors with `pipeline-build-targets list` (or `python -m pipeline.release.matrix_cli list --format json`). The catalogue includes Windows x86 (386), x86_64 and ARM64; Android `armeabi-v7a`, `arm64-v8a`, `x86` and `x86_64`; iOS device ARM64 and simulator ARM64/x86_64; plus PWA/web. These are target descriptors, not a promise that every project or hosted runner can build or execute every architecture without its required SDK, signing, or emulation toolchain.
+
+The provider-neutral core also exposes the stages directly:
+
+~~~sh
+PYTHONPATH=.pipeline/src python -m pipeline.release.target_cli run \
+  --target android-arm64-v8a --stage e2e-test \
+  --target-os android --architecture arm64 --abi arm64-v8a --platform mobile
+~~~
+
 ## Try a build release without publishing
 
 Set `dry-run: true` when calling the workflow. It still validates the tag or development version, runs tests and builds, collects assets, and creates checksums. It skips the GitHub Release publishing job.
