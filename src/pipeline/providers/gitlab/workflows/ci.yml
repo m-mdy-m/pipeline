@@ -5,9 +5,7 @@ stages:
   - verify
 
 variables:
-  PIPELINE_HELPER_REF:
-    value: "main"
-    description: "Branch, tag, or commit of m-mdy-m/pipeline used by downstream projects."
+  PIPELINE_HELPER_REF: "main"
 
 default:
   image: python:3.12
