@@ -199,7 +199,7 @@ class ReleaseTargetTests(unittest.TestCase):
                 workspace=root,
                 report_directory=".reports",
             )
-            self.assertIn("Output target: android/arm64-v8a", summary)
+            self.assertIn("**Output target:** android/arm64-v8a", summary)
 
     def test_e2e_test_is_recorded_as_a_distinct_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
