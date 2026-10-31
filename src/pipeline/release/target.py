@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_TARGET = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_TARGET = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _STAGES = {"test", "build", "artifact-test", "e2e-setup", "e2e-test"}
 
 
