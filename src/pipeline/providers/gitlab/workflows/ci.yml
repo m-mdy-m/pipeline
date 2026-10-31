@@ -30,8 +30,10 @@ pipeline:check:
           echo "Refusing to overwrite existing helper checkout: $helper_dir" >&2
           exit 2
         fi
-        git clone --quiet --depth 1 --branch "$PIPELINE_HELPER_REF" \
-          https://github.com/m-mdy-m/pipeline.git "$helper_dir"
+        git init --quiet "$helper_dir"
+        git -C "$helper_dir" remote add origin https://github.com/m-mdy-m/pipeline.git
+        git -C "$helper_dir" fetch --quiet --depth 1 origin "$PIPELINE_HELPER_REF"
+        git -C "$helper_dir" checkout --quiet --detach FETCH_HEAD
         helper_source="$helper_dir/src"
       fi
       mkdir -p .pipeline-artifacts
