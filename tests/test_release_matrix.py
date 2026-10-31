@@ -31,6 +31,17 @@ class BuildMatrixTests(unittest.TestCase):
         self.assertEqual(rows[0]["abi"], "arm64-v8a")
         self.assertEqual(rows[1]["architecture"], "riscv64")
 
+    def test_matrix_accepts_architecture_ids_with_underscores(self) -> None:
+        rows = validate_build_matrix({
+            "include": [
+                {"id": "android-x86_64", "os": "ubuntu-24.04"},
+                {"id": "ios-simulator-x86_64", "os": "macos-15-intel"},
+            ]
+        })
+        self.assertEqual(rows[0]["architecture"], "x86_64")
+        self.assertEqual(rows[1]["target_os"], "ios-simulator")
+        self.assertEqual(rows[1]["abi"], "simulator")
+
     def test_matrix_rejects_duplicate_ids_bad_commands_and_orphan_setup(self) -> None:
         cases = [
             {"include": [{"id": "x", "os": "ubuntu"}, {"id": "x", "os": "ubuntu"}]},
