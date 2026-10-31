@@ -10,7 +10,7 @@ import json
 import re
 from typing import Any
 
-_TARGET_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_TARGET_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 # These are target descriptors, not mandatory runner labels. Projects choose
 # compatible hosted/self-hosted runners and may add custom target IDs.
