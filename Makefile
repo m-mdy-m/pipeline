@@ -18,7 +18,7 @@ docs-check:
 	@test -s examples/README.md
 
 workflow-inventory:
-	@python -c "import pathlib; files=list(pathlib.Path('.github/workflows').glob('*.yml')); required={'ci-main.yml','ci.yml','docs-check.yml','benchmark.yml','benchmark-matrix.yml','benchmark-self.yml','release.yml','release-on-tag.yml','github-release-smoke.yml','source-release.yml','source-release-smoke.yml','docker-publish.yml','npm-publish.yml','pages.yml','python-publish.yml','security-check.yml','reusable-smoke.yml'}; missing=required-{p.name for p in files}; assert not missing, f'missing workflow files: {sorted(missing)}'; print(f'workflow inventory OK: {len(files)} workflows found')"
+	@python -c "import pathlib; root=pathlib.Path('.'); files=list((root/'.github/workflows').glob('*.yml')); required={'ci-main.yml','ci.yml','docs-check.yml','benchmark.yml','benchmark-matrix.yml','benchmark-self.yml','release.yml','release-on-tag.yml','github-release-smoke.yml','source-release.yml','source-release-smoke.yml','docker-publish.yml','npm-publish.yml','pages.yml','python-publish.yml','security-check.yml','reusable-smoke.yml'}; missing=required-{p.name for p in files}; assert not missing, f'missing GitHub workflows: {sorted(missing)}'; template=root/'src/pipeline/providers/gitlab/workflows/ci.yml'; entry=root/'.gitlab-ci.yml'; assert template.is_file(), f'missing GitLab provider template: {template}'; assert 'local: /src/pipeline/providers/gitlab/workflows/ci.yml' in entry.read_text(encoding='utf-8'), '.gitlab-ci.yml must include the canonical provider template'; print(f'provider workflow inventory OK: {len(files)} GitHub workflows and 1 GitLab template')"
 
 pipeline-config-check:
 	@PYTHONPATH=src python -m pipeline validate --json
