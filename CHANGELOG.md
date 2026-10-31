@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added a provider-neutral build-target catalogue for Linux, macOS, Windows x86/x86_64/ARM64, Android ABIs, iOS device/simulator architectures, and PWA outputs.
+- Added separate `e2e-setup` and `e2e-test` release stages. Projects supply their own emulator/simulator provisioning and E2E commands; the shared runner records target OS, architecture, ABI, and results.
+
+### Changed
+
+- Extended the reusable release workflow to download artifacts back onto each build target runner and run optional E2E setup/tests there, keeping GitHub Actions as orchestration only.
+
 ## [1.1.2] - 2026-10-31
 
 ### Added

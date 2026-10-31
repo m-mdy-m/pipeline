@@ -17,11 +17,15 @@ def main(argv: list[str] | None = None) -> int:
 
     run = commands.add_parser("run", help="run one test, build, or artifact-test stage")
     run.add_argument("--target", required=True)
-    run.add_argument("--stage", required=True, choices=("test", "build", "artifact-test"))
+    run.add_argument("--stage", required=True, choices=("test", "build", "artifact-test", "e2e-setup", "e2e-test"))
     run.add_argument("--command-env", default="PIPELINE_RELEASE_COMMAND")
     run.add_argument("--working-directory", default=".")
     run.add_argument("--report-directory", default=".pipeline-artifacts/release-targets")
     run.add_argument("--shell", default=os.environ.get("PIPELINE_RELEASE_SHELL", "bash"))
+    run.add_argument("--target-os", default=os.environ.get("PIPELINE_TARGET_OS", ""))
+    run.add_argument("--architecture", default=os.environ.get("PIPELINE_TARGET_ARCH", ""))
+    run.add_argument("--abi", default=os.environ.get("PIPELINE_TARGET_ABI", ""))
+    run.add_argument("--platform", default=os.environ.get("PIPELINE_TARGET_PLATFORM", ""))
 
     report = commands.add_parser("report", help="render a Markdown summary for one target")
     report.add_argument("--target", required=True)
@@ -41,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
                 working_directory=args.working_directory,
                 report_directory=args.report_directory,
                 shell=args.shell,
+                target_os=args.target_os,
+                architecture=args.architecture,
+                abi=args.abi,
+                platform=args.platform,
             )
             return 0 if result["status"] == "succeeded" else 1
 

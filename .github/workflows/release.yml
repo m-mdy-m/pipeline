@@ -22,7 +22,17 @@ on:
         type: string
         default: "dist/*"
       artifact-test-command:
-        description: "Optional command that tests the uploaded artifact on its native runner before release assembly"
+        description: "Optional command that inspects the downloaded artifact on the target runner"
+        required: false
+        type: string
+        default: ""
+      e2e-setup-command:
+        description: "Optional project-owned command to provision an emulator, simulator, device, or test service before E2E"
+        required: false
+        type: string
+        default: ""
+      e2e-test-command:
+        description: "Optional project-owned E2E command; runs on the same matrix runner after the artifact is downloaded"
         required: false
         type: string
         default: ""
@@ -101,6 +111,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      - name: Validate build target catalogue and matrix configuration
+        env:
+          PYTHONPATH: .pipeline/src
+          BUILD_MATRIX_JSON: ${{ inputs.build-matrix-json }}
+        shell: bash
+        run: python -m pipeline.release.matrix_cli validate "$BUILD_MATRIX_JSON"
 
       - name: Normalize the GitHub event context
         env:
@@ -271,7 +288,7 @@ jobs:
       # Keep each attempt isolated so a partial extraction cannot contaminate a retry.
       - name: Download artifacts for native verification (attempt 1)
         id: download_artifacts
-        if: inputs.artifact-test-command != '' || matrix.artifact_test_command != null
+        if: inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null
         continue-on-error: true
         uses: actions/download-artifact@v7
         with:
@@ -280,7 +297,7 @@ jobs:
 
       - name: Retry artifact download (attempt 2)
         id: download_artifacts_retry_2
-        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && steps.download_artifacts.outcome != 'success'
+        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && steps.download_artifacts.outcome != 'success'
         continue-on-error: true
         uses: actions/download-artifact@v7
         with:
@@ -289,7 +306,7 @@ jobs:
 
       - name: Retry artifact download (attempt 3)
         id: download_artifacts_retry_3
-        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && steps.download_artifacts.outcome != 'success' && steps.download_artifacts_retry_2.outcome != 'success'
+        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && steps.download_artifacts.outcome != 'success' && steps.download_artifacts_retry_2.outcome != 'success'
         continue-on-error: true
         uses: actions/download-artifact@v7
         with:
@@ -297,7 +314,7 @@ jobs:
           path: ${{ runner.temp }}/release-artifact-test-3
 
       - name: Fail when native-verification artifact could not be downloaded
-        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && steps.download_artifacts.outcome != 'success' && steps.download_artifacts_retry_2.outcome != 'success' && steps.download_artifacts_retry_3.outcome != 'success'
+        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && steps.download_artifacts.outcome != 'success' && steps.download_artifacts_retry_2.outcome != 'success' && steps.download_artifacts_retry_3.outcome != 'success'
         shell: bash
         env:
           TARGET_ID: ${{ matrix.id }}
@@ -307,7 +324,7 @@ jobs:
 
       - name: Run artifact tests (MSYS2)
         id: artifact_test_msys2
-        if: runner.os == 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        if: runner.os == 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
         shell: msys2 {0}
         env:
           PYTHONPATH: .pipeline/src
@@ -320,7 +337,7 @@ jobs:
 
       - name: Run artifact tests
         id: artifact_test_bash
-        if: runner.os != 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        if: runner.os != 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
         shell: bash
         env:
           PYTHONPATH: .pipeline/src
@@ -329,6 +346,68 @@ jobs:
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage artifact-test --working-directory "$RELEASE_WORKING_DIRECTORY"
+
+      - name: Validate E2E command selection
+        shell: bash
+        env:
+          E2E_SETUP_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
+          E2E_TEST_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
+          TARGET_ID: ${{ matrix.id }}
+        run: |
+          if [[ -n "$E2E_SETUP_COMMAND" && -z "$E2E_TEST_COMMAND" ]]; then
+            echo "::error title=Invalid E2E configuration::${TARGET_ID} defines an E2E setup command but no E2E test command."
+            exit 2
+          fi
+
+      - name: Prepare E2E environment (MSYS2)
+        id: e2e_setup_msys2
+        if: runner.os == 'Windows' && matrix.msys2_msystem != null && (inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        shell: msys2 {0}
+        env:
+          PYTHONPATH: .pipeline/src
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage e2e-setup --working-directory "$RELEASE_WORKING_DIRECTORY" --target-os "${{ matrix.target_os || '' }}" --architecture "${{ matrix.architecture || matrix.arch || '' }}" --abi "${{ matrix.abi || '' }}" --platform "${{ matrix.platform || '' }}"
+
+      - name: Prepare E2E environment
+        id: e2e_setup_bash
+        if: runner.os != 'Windows' && (inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        shell: bash
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage e2e-setup --working-directory "$RELEASE_WORKING_DIRECTORY" --target-os "${{ matrix.target_os || '' }}" --architecture "${{ matrix.architecture || matrix.arch || '' }}" --abi "${{ matrix.abi || '' }}" --platform "${{ matrix.platform || '' }}"
+
+      - name: Run E2E tests (MSYS2)
+        id: e2e_test_msys2
+        if: runner.os == 'Windows' && matrix.msys2_msystem != null && (inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        shell: msys2 {0}
+        env:
+          PYTHONPATH: .pipeline/src
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage e2e-test --working-directory "$RELEASE_WORKING_DIRECTORY" --target-os "${{ matrix.target_os || '' }}" --architecture "${{ matrix.architecture || matrix.arch || '' }}" --abi "${{ matrix.abi || '' }}" --platform "${{ matrix.platform || '' }}"
+
+      - name: Run E2E tests
+        id: e2e_test_bash
+        if: runner.os != 'Windows' && (inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        shell: bash
+        env:
+          PYTHONPATH: .pipeline/src
+          TARGET_ID: ${{ matrix.id }}
+          PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
+          RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
+        run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage e2e-test --working-directory "$RELEASE_WORKING_DIRECTORY" --target-os "${{ matrix.target_os || '' }}" --architecture "${{ matrix.architecture || matrix.arch || '' }}" --abi "${{ matrix.abi || '' }}" --platform "${{ matrix.platform || '' }}"
 
       - name: Report release target outcome
         if: always()
@@ -341,6 +420,8 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build_msys2.outcome != 'skipped' && steps.build_msys2.outcome || steps.build_bash.outcome }}
           ARTIFACT_DOWNLOAD_OUTCOME: ${{ steps.download_artifacts_retry_3.outcome == 'success' && 'success' || steps.download_artifacts_retry_2.outcome == 'success' && 'success' || steps.download_artifacts.outcome }}
           ARTIFACT_TEST_OUTCOME: ${{ steps.artifact_test_msys2.outcome != 'skipped' && steps.artifact_test_msys2.outcome || steps.artifact_test_bash.outcome }}
+          E2E_SETUP_OUTCOME: ${{ steps.e2e_setup_msys2.outcome != 'skipped' && steps.e2e_setup_msys2.outcome || steps.e2e_setup_bash.outcome }}
+          E2E_TEST_OUTCOME: ${{ steps.e2e_test_msys2.outcome != 'skipped' && steps.e2e_test_msys2.outcome || steps.e2e_test_bash.outcome }}
         run: |
           set -u
           report="$TARGET_REPORT_DIR/$TARGET_ID/summary.md"
@@ -354,7 +435,7 @@ jobs:
             else
               printf '## Release target: %s\n\nNo source-level stage report was produced.\n\n' "$TARGET_ID"
             fi
-            printf '### GitHub Actions stage outcomes\n\n| Stage | Outcome |\n| --- | --- |\n| Test | %s |\n| Build | %s |\n| Artifact download | %s |\\n| Downloaded artifact test | %s |\n' "$TEST_OUTCOME" "$BUILD_OUTCOME" "$ARTIFACT_DOWNLOAD_OUTCOME" "$ARTIFACT_TEST_OUTCOME"
+            printf '### GitHub Actions stage outcomes\n\n| Stage | Outcome |\n| --- | --- |\n| Test | %s |\n| Build | %s |\n| Artifact download | %s |\n| Downloaded artifact test | %s |\n| E2E setup | %s |\n| E2E test | %s |\n' "$TEST_OUTCOME" "$BUILD_OUTCOME" "$ARTIFACT_DOWNLOAD_OUTCOME" "$ARTIFACT_TEST_OUTCOME" "$E2E_SETUP_OUTCOME" "$E2E_TEST_OUTCOME"
           } >> "$GITHUB_STEP_SUMMARY"
           if [[ "$TEST_OUTCOME" == "failure" ]]; then
             echo "::error title=Release target test failed::${TARGET_ID}: test stage failed; see the Run tests step output."
@@ -367,6 +448,12 @@ jobs:
           fi
           if [[ "$ARTIFACT_TEST_OUTCOME" == "failure" ]]; then
             echo "::error title=Downloaded release artifact test failed::${TARGET_ID}: the native artifact test failed; publishing is blocked."
+          fi
+          if [[ "$E2E_SETUP_OUTCOME" == "failure" ]]; then
+            echo "::error title=E2E environment setup failed::${TARGET_ID}: the E2E setup command failed; publishing is blocked."
+          fi
+          if [[ "$E2E_TEST_OUTCOME" == "failure" ]]; then
+            echo "::error title=E2E test failed::${TARGET_ID}: the configured E2E command failed; publishing is blocked."
           fi
 
       - name: Upload target diagnostics
