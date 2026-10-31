@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -11,7 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_TARGET = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+from .identifiers import is_valid_target_id
+
 _STAGES = {"test", "build", "artifact-test", "e2e-setup", "e2e-test"}
 
 
@@ -122,7 +122,7 @@ def execute_target_stage(
     platform: str = "",
 ) -> dict[str, Any]:
     """Run a stage through Bash, stream combined output live, and save its result."""
-    if not _TARGET.fullmatch(target):
+    if not is_valid_target_id(target):
         raise ReleaseTargetError(f"Invalid release target identifier: {target!r}")
     if stage not in _STAGES:
         raise ReleaseTargetError(f"Release stage must be one of: {', '.join(sorted(_STAGES))}")
