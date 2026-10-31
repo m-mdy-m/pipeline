@@ -201,6 +201,6 @@ A stable release without its matching changelog section is rejected. Prerelease 
 
 The workflow that calls a publishing workflow must allow `contents: write`. The publishing job uses that permission to create the GitHub Release.
 
-The default `GITHUB_TOKEN` is enough for ordinary GitHub Releases. The build-release workflow also accepts an optional `release-token` secret when a project needs a different token. Source releases need `submodule-token` only when they must read private GitHub submodules.
+The default `GITHUB_TOKEN` is enough for ordinary GitHub Releases. The build-release workflow also accepts an optional `release-token` secret when a project needs a different token. Projects whose mobile build commands require an application endpoint may pass it through the optional `mobile-server-url` secret; the reusable workflow exposes it to project commands as `IDIOS_MOBILE_SERVER_URL` and never commits the endpoint. Source releases need `submodule-token` only when they must read private GitHub submodules.
 
 Do not put tokens in `pipeline.toml`, command strings, or committed workflow files.

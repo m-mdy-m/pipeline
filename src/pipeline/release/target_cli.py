@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    run = commands.add_parser("run", help="run one test, build, or artifact-test stage")
+    run = commands.add_parser("run", help="run a test, build, artifact, or E2E stage")
     run.add_argument("--target", required=True)
     run.add_argument("--stage", required=True, choices=("test", "build", "artifact-test", "e2e-setup", "e2e-test"))
     run.add_argument("--command-env", default="PIPELINE_RELEASE_COMMAND")

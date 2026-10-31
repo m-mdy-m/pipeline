@@ -42,6 +42,13 @@ class BuildMatrixTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(BuildMatrixError):
                 validate_build_matrix(value)
 
+    def test_matrix_target_setup_can_use_a_workflow_level_e2e_test_default(self) -> None:
+        rows = validate_build_matrix(
+            {"include": [{"id": "ios-simulator-arm64", "os": "macos-15", "e2e_setup_command": "boot-simulator"}]},
+            default_e2e_test_command="run-e2e",
+        )
+        self.assertEqual(rows[0]["e2e_setup_command"], "boot-simulator")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

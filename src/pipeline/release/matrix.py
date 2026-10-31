@@ -43,7 +43,9 @@ def target_catalog() -> dict[str, dict[str, str]]:
     return {name: dict(values) for name, values in TARGET_CATALOG.items()}
 
 
-def validate_build_matrix(value: str | dict[str, Any]) -> list[dict[str, Any]]:
+def validate_build_matrix(
+    value: str | dict[str, Any], *, default_e2e_test_command: str = ""
+) -> list[dict[str, Any]]:
     """Parse and validate a project-owned GitHub-style {include: [...]} matrix.
 
     The runner field 'os' intentionally remains project-defined; target_os,
@@ -91,7 +93,7 @@ def validate_build_matrix(value: str | dict[str, Any]) -> list[dict[str, Any]]:
             if command is not None and not isinstance(command, str):
                 raise BuildMatrixError(f"{target_id}.{field} must be a string")
             row[field] = command or ""
-        if row["e2e_setup_command"] and not row["e2e_test_command"]:
+        if row["e2e_setup_command"] and not (row["e2e_test_command"] or default_e2e_test_command):
             raise BuildMatrixError(f"{target_id} configures e2e_setup_command without e2e_test_command")
         for field in ("target_os", "architecture", "abi", "platform"):
             if not isinstance(row[field], str):

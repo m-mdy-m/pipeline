@@ -80,6 +80,9 @@ on:
       release-token:
         description: "Optional token used to publish the GitHub Release"
         required: false
+      mobile-server-url:
+        description: "Optional HTTPS endpoint passed to project-owned mobile build and E2E commands"
+        required: false
 
 permissions:
   contents: read
@@ -116,8 +119,9 @@ jobs:
         env:
           PYTHONPATH: .pipeline/src
           BUILD_MATRIX_JSON: ${{ inputs.build-matrix-json }}
+          DEFAULT_E2E_TEST_COMMAND: ${{ inputs.e2e-test-command }}
         shell: bash
-        run: python -m pipeline.release.matrix_cli validate "$BUILD_MATRIX_JSON"
+        run: python -m pipeline.release.matrix_cli validate "$BUILD_MATRIX_JSON" --default-e2e-test-command "$DEFAULT_E2E_TEST_COMMAND"
 
       - name: Normalize the GitHub event context
         env:
@@ -261,6 +265,7 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
@@ -273,6 +278,7 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
 
@@ -324,7 +330,7 @@ jobs:
 
       - name: Run artifact tests (MSYS2)
         id: artifact_test_msys2
-        if: runner.os == 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        if: runner.os == 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
         shell: msys2 {0}
         env:
           PYTHONPATH: .pipeline/src
@@ -337,7 +343,7 @@ jobs:
 
       - name: Run artifact tests
         id: artifact_test_bash
-        if: runner.os != 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
+        if: runner.os != 'Windows' && (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && (steps.download_artifacts.outcome == 'success' || steps.download_artifacts_retry_2.outcome == 'success' || steps.download_artifacts_retry_3.outcome == 'success')
         shell: bash
         env:
           PYTHONPATH: .pipeline/src
@@ -367,6 +373,7 @@ jobs:
           PYTHONPATH: .pipeline/src
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
+          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
@@ -379,6 +386,7 @@ jobs:
         env:
           PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
+          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_setup_command || inputs.e2e-setup-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
@@ -392,6 +400,7 @@ jobs:
           PYTHONPATH: .pipeline/src
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
+          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
@@ -404,6 +413,7 @@ jobs:
         env:
           PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
+          IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.e2e_test_command || inputs.e2e-test-command }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           PIPELINE_ARTIFACT_TEST_DIR: ${{ steps.download_artifacts.outcome == 'success' && format('{0}/release-artifact-test-1', runner.temp) || steps.download_artifacts_retry_2.outcome == 'success' && format('{0}/release-artifact-test-2', runner.temp) || format('{0}/release-artifact-test-3', runner.temp) }}
