@@ -1,0 +1,46 @@
+# Canonical reusable GitLab CI template for projects using m-mdy-m/pipeline.
+# GitHub's equivalent reusable workflows live under .github/workflows/ because
+# GitHub only discovers workflow files from that reserved directory.
+stages:
+  - verify
+
+variables:
+  PIPELINE_HELPER_REF:
+    value: "main"
+    description: "Branch, tag, or commit of m-mdy-m/pipeline used by downstream projects."
+
+default:
+  image: python:3.12
+
+pipeline:check:
+  stage: verify
+  script:
+    - |
+      set -eu
+      helper_source="$CI_PROJECT_DIR/src"
+      if [ ! -f "$helper_source/pipeline/providers/gitlab/adapter.py" ]; then
+        if ! command -v git >/dev/null 2>&1; then
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+          rm -rf /var/lib/apt/lists/*
+        fi
+        case "$PIPELINE_HELPER_REF" in
+          ""|-*) echo "PIPELINE_HELPER_REF must be a non-empty branch, tag, or commit name." >&2; exit 2 ;;
+        esac
+        helper_dir="$CI_PROJECT_DIR/.pipeline"
+        if [ -e "$helper_dir" ]; then
+          echo "Refusing to overwrite existing helper checkout: $helper_dir" >&2
+          exit 2
+        fi
+        git clone --quiet --depth 1 --branch "$PIPELINE_HELPER_REF" \
+          https://github.com/m-mdy-m/pipeline.git "$helper_dir"
+        helper_source="$helper_dir/src"
+      fi
+      mkdir -p .pipeline-artifacts
+      PYTHONPATH="$helper_source" python -m pipeline.providers.gitlab run check --json \
+        --result .pipeline-artifacts/pipeline-result.json
+  artifacts:
+    when: always
+    paths:
+      - .pipeline-artifacts/
+    expire_in: 7 days
