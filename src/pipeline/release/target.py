@@ -226,7 +226,7 @@ def render_target_summary(
     workspace: str | Path | None = None,
 ) -> str:
     """Render Markdown for the status summary of one matrix target."""
-    if not _TARGET.fullmatch(target):
+    if not is_valid_target_id(target):
         raise ReleaseTargetError(f"Invalid release target identifier: {target!r}")
     root = Path(workspace or Path.cwd()).expanduser().resolve()
     reports = _inside(root, root / report_directory, label="Report directory") / target
