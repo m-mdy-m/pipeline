@@ -155,6 +155,22 @@ class ReleaseTargetTests(unittest.TestCase):
             self.assertIn("build", summary)
             self.assertIn("status 1", summary)
 
+    def test_target_stage_accepts_x86_64_target_identifiers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for target in ("android-x86_64", "ios-simulator-x86_64"):
+                with self.subTest(target=target):
+                    result = execute_target_stage(
+                        target=target,
+                        stage="test",
+                        command="true",
+                        workspace=root,
+                        report_directory=".reports",
+                    )
+                    self.assertEqual(result["status"], "succeeded")
+                    report = root / ".reports" / target / "test.json"
+                    self.assertTrue(report.is_file())
+
     def test_invalid_target_and_workspace_escape_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
