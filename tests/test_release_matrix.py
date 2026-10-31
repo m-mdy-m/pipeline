@@ -31,6 +31,20 @@ class BuildMatrixTests(unittest.TestCase):
         self.assertEqual(rows[0]["abi"], "arm64-v8a")
         self.assertEqual(rows[1]["architecture"], "riscv64")
 
+    def test_matrix_validates_optional_java_toolchain_metadata(self) -> None:
+        rows = validate_build_matrix({
+            "include": [
+                {"id": "android-arm64-v8a", "os": "ubuntu-24.04", "java_version": "21"},
+                {"id": "linux-amd64", "os": "ubuntu-24.04"},
+            ]
+        })
+        self.assertEqual(rows[0]["java_version"], "21")
+        self.assertEqual(rows[1]["java_version"], "")
+        with self.assertRaises(BuildMatrixError):
+            validate_build_matrix({
+                "include": [{"id": "android-arm64-v8a", "os": "ubuntu-24.04", "java_version": 21}]
+            })
+
     def test_matrix_accepts_architecture_ids_with_underscores(self) -> None:
         rows = validate_build_matrix({
             "include": [

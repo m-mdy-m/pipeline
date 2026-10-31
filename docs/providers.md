@@ -143,6 +143,12 @@ the reusable workflow. Existing callers that use `build-command` and
 
 The available workflows are:
 
+Release matrix entries may declare an optional `java_version` string.
+The reusable release workflow provisions Eclipse Temurin through
+`actions/setup-java` only for entries that request it; Android/Gradle targets
+commonly use `java_version: "21"`. Targets without that field do not install
+Java.
+
 | Workflow | Purpose |
 | --- | --- |
 | `ci.yml` | Build, test, and optional lint for Go, Node.js, Rust, Python, Java, .NET, C, or custom projects. |

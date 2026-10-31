@@ -88,6 +88,10 @@ def validate_build_matrix(
         row["architecture"] = item.get("architecture", item.get("arch", known.get("architecture", "")))
         row["abi"] = item.get("abi", known.get("abi", ""))
         row["platform"] = item.get("platform", known.get("platform", ""))
+        java_version = item.get("java_version", "")
+        if java_version is not None and not isinstance(java_version, str):
+            raise BuildMatrixError(f"{target_id}.java_version must be a string")
+        row["java_version"] = java_version or ""
         for field in command_fields:
             command = item.get(field, "")
             if command is not None and not isinstance(command, str):
