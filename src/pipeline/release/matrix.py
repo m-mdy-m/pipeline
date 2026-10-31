@@ -7,10 +7,10 @@ emulators and cross-compilation.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
-_TARGET_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+from .identifiers import is_valid_target_id
+
 
 # These are target descriptors, not mandatory runner labels. Projects choose
 # compatible hosted/self-hosted runners and may add custom target IDs.
@@ -74,7 +74,7 @@ def validate_build_matrix(
             raise BuildMatrixError(f"Build matrix entry {index} must be an object")
         target_id = item.get("id")
         runner = item.get("os")
-        if not isinstance(target_id, str) or not _TARGET_ID.fullmatch(target_id):
+        if not isinstance(target_id, str) or not is_valid_target_id(target_id):
             raise BuildMatrixError(f"Build matrix entry {index} has an invalid id")
         if target_id in seen:
             raise BuildMatrixError(f"Duplicate build target id: {target_id}")
