@@ -1,7 +1,9 @@
 """Provider-neutral preparation and assembly for compiled build releases."""
 from __future__ import annotations
 
+import hashlib
 import json
+import lzma
 import re
 import shutil
 import tarfile
@@ -171,6 +173,269 @@ def _deterministic_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
+
+def _ensure_asset_sidecar(path: Path) -> Path:
+    """Create or validate a sha256sum-compatible sidecar for one asset."""
+    digest = _sha256(path)
+    sidecar = path.with_name(path.name + ".sha256")
+    if sidecar.exists():
+        try:
+            text = sidecar.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError) as exc:
+            raise BuildReleaseError(f"Cannot read checksum sidecar {sidecar.name}: {exc}") from exc
+        match = re.fullmatch(r"([0-9a-f]{64})  (.+)", text)
+        if not match or match.group(1) != digest or match.group(2) != path.name:
+            raise BuildReleaseError(
+                f"Checksum sidecar does not match its asset: {sidecar.name}"
+            )
+        return sidecar
+    _atomic_write(sidecar, f"{digest}  {path.name}\n")
+    return sidecar
+
+
+def _compress_xz(source: Path, destination: Path) -> None:
+    """Create a deterministic XZ stream without loading the whole asset in memory."""
+    try:
+        with source.open("rb") as reader, lzma.open(
+            destination, "wb", format=lzma.FORMAT_XZ, preset=6
+        ) as writer:
+            shutil.copyfileobj(reader, writer, length=1024 * 1024)
+    except (OSError, lzma.LZMAError) as exc:
+        raise BuildReleaseError(f"Could not create XZ asset {destination.name}: {exc}") from exc
+
+
+def _verify_xz_matches(source: Path, compressed: Path) -> None:
+    """Reject a pre-existing .xz file unless it is exactly the source asset."""
+    digest = hashlib.sha256()
+    try:
+        with lzma.open(compressed, "rb") as reader:
+            while chunk := reader.read(1024 * 1024):
+                digest.update(chunk)
+    except (OSError, lzma.LZMAError) as exc:
+        raise BuildReleaseError(
+            f"Existing compressed asset is not a valid XZ stream: {compressed.name}"
+        ) from exc
+    if digest.hexdigest() != _sha256(source):
+        raise BuildReleaseError(
+            f"Existing .xz asset does not contain {source.name}: {compressed.name}"
+        )
+
+
+def _write_gitea_profile(
+    root: Path,
+    records: list[dict[str, Any]],
+    metadata_path: str | Path | None,
+) -> int:
+    """Add XZ variants, per-file checksums, and a release manifest."""
+    reserved = {"manifest.json", "release-attestation.json", "SHA256SUMS"}
+    payload_records = [
+        record for record in records
+        if not str(record["final_name"]).endswith(".sha256")
+    ]
+    payload_names = [str(record["final_name"]) for record in payload_records]
+    collisions = sorted(name for name in payload_names if name in reserved)
+    if collisions:
+        raise BuildReleaseError(
+            "Release artifacts use reserved Gitea profile names: " + ", ".join(collisions)
+        )
+
+    rows: list[dict[str, Any]] = []
+    for record in payload_records:
+        source = root / str(record["final_name"])
+        if not source.is_file() or source.is_symlink():
+            raise BuildReleaseError(f"Release asset is missing or unsafe: {source.name}")
+        compressed_info: dict[str, Any] | None = None
+        if not source.name.endswith(".xz"):
+            compressed = root / (source.name + ".xz")
+            if compressed.exists():
+                if compressed.is_symlink() or not compressed.is_file():
+                    raise BuildReleaseError(f"Existing XZ asset is not a regular file: {compressed.name}")
+                _verify_xz_matches(source, compressed)
+            else:
+                _compress_xz(source, compressed)
+            compressed_info = {
+                "format": "xz",
+                "name": compressed.name,
+                "size": compressed.stat().st_size,
+                "sha256": _sha256(compressed),
+            }
+            _ensure_asset_sidecar(compressed)
+        _ensure_asset_sidecar(source)
+        rows.append({
+            "name": source.name,
+            "target": str(record["target"]),
+            "size": source.stat().st_size,
+            "sha256": _sha256(source),
+            "compressed": compressed_info,
+        })
+
+    metadata: dict[str, Any] = {}
+    if metadata_path is not None:
+        metadata_file = Path(metadata_path).expanduser().resolve()
+        if not metadata_file.is_file() or metadata_file.is_symlink():
+            raise BuildReleaseError(f"Release metadata file does not exist or is unsafe: {metadata_file}")
+        try:
+            loaded = json.loads(metadata_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise BuildReleaseError(f"Cannot read release metadata JSON: {exc}") from exc
+        if not isinstance(loaded, dict):
+            raise BuildReleaseError("Release metadata must be a JSON object")
+        metadata = loaded
+
+    manifest = {
+        "schema_version": 1,
+        "asset_profile": "gitea",
+        "version": metadata.get("version"),
+        "tag": metadata.get("release_tag") or metadata.get("tag") or "",
+        "commit_sha": metadata.get("commit_sha") or "",
+        "prerelease": bool(metadata.get("prerelease", False)),
+        "assets": rows,
+    }
+    manifest_path = root / "manifest.json"
+    _atomic_write(manifest_path, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    _ensure_asset_sidecar(manifest_path)
+
+    files = sorted(
+        (path for path in root.iterdir() if path.is_file() and path.name != "SHA256SUMS"),
+        key=lambda path: path.name,
+    )
+    _atomic_write(
+        root / "SHA256SUMS",
+        "\n".join(f"{_sha256(path)}  {path.name}" for path in files) + "\n",
+    )
+    return len(files) + 1
+
+
+def verify_release_assets(assets_directory: str | Path) -> dict[str, Any]:
+    """Verify a flattened build-release bundle, its checksums, and optional XZ manifest."""
+    if profile not in {"standard", "gitea"}:
+        raise BuildReleaseError("Release asset profile must be standard or gitea")
+    root = Path(assets_directory).expanduser().resolve()
+    if not root.is_dir():
+        raise BuildReleaseError(f"Release assets directory does not exist: {root}")
+    sums_path = root / "SHA256SUMS"
+    if not sums_path.is_file():
+        raise BuildReleaseError("Release bundle is missing SHA256SUMS")
+
+    checksums: dict[str, str] = {}
+    try:
+        lines = sums_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise BuildReleaseError(f"Cannot read SHA256SUMS: {exc}") from exc
+    for line_number, line in enumerate(lines, 1):
+        parts = line.split("  ", 1)
+        if len(parts) != 2:
+            raise BuildReleaseError(f"Malformed SHA256SUMS line {line_number}")
+        digest, name = parts
+        if not re.fullmatch(r"[0-9a-f]{64}", digest) or not name or Path(name).name != name:
+            raise BuildReleaseError(f"Unsafe SHA256SUMS entry on line {line_number}")
+        if name == "SHA256SUMS" or name in checksums:
+            raise BuildReleaseError(f"Duplicate or recursive SHA256SUMS entry: {name}")
+        checksums[name] = digest
+
+    actual = {
+        path.name for path in root.iterdir()
+        if path.is_file() and path.name != "SHA256SUMS"
+    }
+    if set(checksums) != actual:
+        missing = sorted(actual - set(checksums))
+        absent = sorted(set(checksums) - actual)
+        raise BuildReleaseError(
+            f"SHA256SUMS inventory mismatch; unlisted={missing}, missing={absent}"
+        )
+    for name, expected in checksums.items():
+        candidate = root / name
+        if candidate.is_symlink() or _sha256(candidate) != expected:
+            raise BuildReleaseError(f"SHA256 validation failed for release asset: {name}")
+
+    manifest_path = root / "manifest.json"
+    asset_count = len(actual)
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise BuildReleaseError(f"manifest.json is invalid: {exc}") from exc
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema_version") != 1
+            or manifest.get("asset_profile") != "gitea"
+            or not isinstance(manifest.get("assets"), list)
+        ):
+            raise BuildReleaseError("manifest.json has an unsupported release manifest schema")
+        seen: set[str] = set()
+        for row in manifest["assets"]:
+            if not isinstance(row, dict):
+                raise BuildReleaseError("manifest.json contains an invalid asset record")
+            name, expected = row.get("name"), row.get("sha256")
+            if (
+                not isinstance(name, str)
+                or Path(name).name != name
+                or not isinstance(expected, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected)
+                or name in seen
+            ):
+                raise BuildReleaseError("manifest.json contains an unsafe or duplicate asset")
+            seen.add(name)
+            asset = root / name
+            if not asset.is_file() or asset.is_symlink():
+                raise BuildReleaseError(f"Manifest asset is missing: {name}")
+            if _sha256(asset) != expected or row.get("size") != asset.stat().st_size:
+                raise BuildReleaseError(f"Manifest metadata mismatch for asset: {name}")
+            sidecar = root / (name + ".sha256")
+            if not sidecar.is_file():
+                raise BuildReleaseError(f"Manifest asset has no checksum sidecar: {name}")
+            try:
+                sidecar_text = sidecar.read_text(encoding="ascii").strip()
+            except (OSError, UnicodeError) as exc:
+                raise BuildReleaseError(f"Cannot read checksum sidecar for {name}: {exc}") from exc
+            if sidecar_text != f"{expected}  {name}":
+                raise BuildReleaseError(f"Checksum sidecar mismatch for asset: {name}")
+
+            compressed_meta = row.get("compressed")
+            if compressed_meta is not None:
+                if not isinstance(compressed_meta, dict) or compressed_meta.get("format") != "xz":
+                    raise BuildReleaseError(f"Unsupported compressed representation for asset: {name}")
+                compressed_name = compressed_meta.get("name")
+                compressed_digest = compressed_meta.get("sha256")
+                if (
+                    not isinstance(compressed_name, str)
+                    or Path(compressed_name).name != compressed_name
+                    or not isinstance(compressed_digest, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", compressed_digest)
+                ):
+                    raise BuildReleaseError(f"Invalid XZ metadata for asset: {name}")
+                compressed_path = root / compressed_name
+                if (
+                    not compressed_path.is_file()
+                    or compressed_path.is_symlink()
+                    or compressed_path.stat().st_size != compressed_meta.get("size")
+                    or _sha256(compressed_path) != compressed_digest
+                ):
+                    raise BuildReleaseError(f"Compressed asset metadata mismatch: {compressed_name}")
+                compressed_sidecar = root / (compressed_name + ".sha256")
+                if not compressed_sidecar.is_file():
+                    raise BuildReleaseError(f"Compressed asset has no checksum sidecar: {compressed_name}")
+                if compressed_sidecar.read_text(encoding="ascii").strip() != f"{compressed_digest}  {compressed_name}":
+                    raise BuildReleaseError(f"Compressed asset checksum sidecar mismatch: {compressed_name}")
+                try:
+                    digest = hashlib.sha256()
+                    with lzma.open(compressed_path, "rb") as stream:
+                        while chunk := stream.read(1024 * 1024):
+                            digest.update(chunk)
+                except (OSError, lzma.LZMAError) as exc:
+                    raise BuildReleaseError(f"Cannot decompress XZ asset {compressed_name}: {exc}") from exc
+                if digest.hexdigest() != expected:
+                    raise BuildReleaseError(f"XZ asset does not reproduce its source: {compressed_name}")
+
+    return {
+        "assets_directory": str(root),
+        "file_count": len(actual),
+        "asset_count": len(seen) if manifest_path.is_file() else len(actual),
+        "checksum_file": str(sums_path),
+        "manifest": str(manifest_path) if manifest_path.is_file() else None,
+    }
+
+
 def _selected_artifact_entries(target_root: Path) -> list[Path]:
     """Return selected paths, removing a single conventional output wrapper."""
     entries = sorted(target_root.iterdir(), key=lambda item: item.name)
@@ -183,7 +448,12 @@ def _selected_artifact_entries(target_root: Path) -> list[Path]:
     return entries
 
 
-def assemble_release_assets(assets_directory: str | Path) -> dict[str, Any]:
+def assemble_release_assets(
+    assets_directory: str | Path,
+    *,
+    profile: str = "standard",
+    metadata_path: str | Path | None = None,
+) -> dict[str, Any]:
     """Normalize downloaded artifacts into unique, flat GitHub Release assets.
 
     GitHub Release assets do not preserve directory structure and require unique
@@ -359,8 +629,13 @@ def assemble_release_assets(assets_directory: str | Path) -> dict[str, Any]:
             shutil.rmtree(staging)
         raise
 
+    bundle_file_count = 0
+    if profile == "gitea":
+        bundle_file_count = _write_gitea_profile(root, records, metadata_path)
     return {
         "assets_directory": str(root),
         "asset_count": len(records),
+        "asset_profile": profile,
+        "bundle_file_count": bundle_file_count or len(list(root.iterdir())),
         "checksum_file": str(root / "SHA256SUMS"),
     }

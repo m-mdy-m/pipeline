@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import lzma
 import sys
 import tempfile
 import unittest
@@ -13,6 +15,7 @@ from pipeline.release.build import (  # noqa: E402
     BuildReleaseError,
     assemble_release_assets,
     prepare_release,
+    verify_release_assets,
 )
 
 
@@ -185,6 +188,70 @@ class BuildReleaseTests(unittest.TestCase):
             (assets / "linked.bin").symlink_to(target)
             with self.assertRaises(BuildReleaseError):
                 assemble_release_assets(assets)
+
+
+    def test_gitea_profile_adds_xz_assets_sidecars_manifest_and_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            assets = root / "assets"
+            target = assets / "release-build-linux-amd64"
+            target.mkdir(parents=True)
+            binary = target / "pipeline-linux-amd64"
+            binary.write_bytes(b"example release binary" * 1024)
+            metadata = root / "release-meta.json"
+            metadata.write_text(
+                json.dumps({
+                    "version": "1.2.3",
+                    "release_tag": "v1.2.3",
+                    "commit_sha": "a" * 40,
+                    "prerelease": False,
+                }),
+                encoding="utf-8",
+            )
+
+            result = assemble_release_assets(assets, profile="gitea", metadata_path=metadata)
+
+            original = assets / binary.name
+            compressed = assets / (binary.name + ".xz")
+            self.assertEqual(result["asset_profile"], "gitea")
+            self.assertTrue(original.is_file())
+            self.assertTrue(compressed.is_file())
+            self.assertEqual(lzma.decompress(compressed.read_bytes()), original.read_bytes())
+            self.assertEqual(
+                (assets / (original.name + ".sha256")).read_text(encoding="ascii"),
+                f"{hashlib.sha256(original.read_bytes()).hexdigest()}  {original.name}\n",
+            )
+            manifest = json.loads((assets / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["version"], "1.2.3")
+            self.assertEqual(manifest["tag"], "v1.2.3")
+            self.assertEqual(manifest["assets"][0]["name"], original.name)
+            self.assertEqual(manifest["assets"][0]["compressed"]["name"], compressed.name)
+
+            verification = verify_release_assets(assets)
+            self.assertGreaterEqual(verification["file_count"], 6)
+            self.assertEqual(verification["asset_count"], 1)
+
+    def test_release_verifier_rejects_modified_asset_or_checksum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            target = assets / "release-build-linux-amd64"
+            target.mkdir(parents=True)
+            (target / "binary").write_bytes(b"original")
+            assemble_release_assets(assets, profile="gitea")
+            (assets / "binary").write_bytes(b"tampered")
+            with self.assertRaises(BuildReleaseError):
+                verify_release_assets(assets)
+
+    def test_gitea_profile_rejects_conflicting_existing_xz_asset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            target = assets / "release-build-linux-amd64"
+            target.mkdir(parents=True)
+            (target / "binary").write_bytes(b"original")
+            (target / "binary.xz").write_bytes(b"not an xz stream")
+            with self.assertRaises(BuildReleaseError):
+                assemble_release_assets(assets, profile="gitea")
+
 
 
 if __name__ == "__main__":
