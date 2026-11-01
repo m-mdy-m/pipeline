@@ -11,6 +11,7 @@ from .build import (
     BuildReleaseError,
     assemble_release_assets,
     prepare_release,
+    verify_release_assets,
 )
 
 
@@ -30,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
 
     assemble = commands.add_parser("assemble", help="create checksums for downloaded artifacts")
     assemble.add_argument("--assets-directory", default="release-assets")
+    assemble.add_argument("--profile", choices=("standard", "gitea"), default="standard")
+    assemble.add_argument("--metadata", default="", help="optional release-meta.json from the prepare stage")
+
+    verify = commands.add_parser("verify", help="verify release checksums and the optional asset manifest")
+    verify.add_argument("--assets-directory", default="release-assets")
 
     args = parser.parse_args(argv)
     try:
@@ -42,8 +48,14 @@ def main(argv: list[str] | None = None) -> int:
                 commit_sha=args.commit_sha,
                 dry_run=args.dry_run,
             )
+        elif args.command == "assemble":
+            result = assemble_release_assets(
+                args.assets_directory,
+                profile=args.profile,
+                metadata_path=args.metadata or None,
+            )
         else:
-            result = assemble_release_assets(args.assets_directory)
+            result = verify_release_assets(args.assets_directory)
     except (BuildReleaseError, OSError) as exc:
         print(f"build release failed: {exc}", file=sys.stderr)
         return 1
