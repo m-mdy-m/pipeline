@@ -1,6 +1,16 @@
 name: GitHub Release Dry Run
 
 on:
+  pull_request:
+    paths:
+      - "CHANGELOG.md"
+      - "Makefile"
+      - "pipeline.toml"
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/github-release-smoke.yml"
+      - ".github/actions/**"
   push:
     branches: [main, develop]
     paths:
@@ -33,4 +43,5 @@ jobs:
         python -c 'import os; from pathlib import Path; files = list(Path(os.environ["PIPELINE_ARTIFACT_TEST_DIR"]).glob("pipeline-workflow-catalog.tar.gz")); assert files and files[0].stat().st_size > 0, "downloaded release archive is missing or empty"'
       working-directory: .
       changelog-path: CHANGELOG.md
+      asset-profile: gitea
       dry-run: true
