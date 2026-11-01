@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import lzma
+import re
 import sys
 import tempfile
 import unittest
@@ -252,6 +253,33 @@ class BuildReleaseTests(unittest.TestCase):
             with self.assertRaises(BuildReleaseError):
                 assemble_release_assets(assets, profile="gitea")
 
+
+
+class ReleaseWorkflowContractTests(unittest.TestCase):
+    def test_release_workflows_use_version_tags_not_commit_sha_pins(self) -> None:
+        paths = (
+            ROOT / ".github/workflows/release.yml",
+            ROOT / ".github/workflows/release-on-tag.yml",
+            ROOT / ".github/workflows/reusable-smoke.yml",
+            ROOT / ".github/workflows/github-release-smoke.yml",
+            ROOT / ".github/workflows/release-assets-smoke.yml",
+            ROOT / ".github/actions/python-setup/action.yml",
+            ROOT / ".github/actions/release-assets/action.yml",
+        )
+        for path in paths:
+            workflow = path.read_text(encoding="utf-8")
+            refs = re.findall(r"(?m)^\s*uses:\s*([^\s#]+)", workflow)
+            for ref in refs:
+                if ref.startswith("./"):
+                    continue
+                with self.subTest(path=path.relative_to(ROOT), action=ref):
+                    self.assertIn("@", ref)
+                    version = ref.rsplit("@", 1)[1]
+                    self.assertRegex(
+                        version,
+                        r"^v\d+(?:\.\d+)*(?:[-+][A-Za-z0-9.-]+)?$",
+                    )
+                    self.assertNotRegex(version, r"^[0-9a-f]{40}$")
 
 
 if __name__ == "__main__":
