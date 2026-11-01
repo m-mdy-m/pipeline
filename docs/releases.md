@@ -78,6 +78,15 @@ For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix 
 
 A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
+The artifact pattern may match both files and directories. The assemble step normalizes the downloaded results into flat, uniquely named GitHub Release assets:
+
+- A selected directory with a sibling archive of the same name (for example, `dist/app/` and `dist/app.zip`) is treated as an unpacked copy; the existing archive is published and the directory contents are omitted.
+- A selected directory without a matching sibling archive is packaged as a `.tar.gz` asset.
+- Files with the same basename from different build targets are renamed with their target ID as a prefix. SHA-256 sidecar references are updated when an asset is renamed.
+- The pipeline writes one top-level `SHA256SUMS` manifest for the normalized files.
+
+This means a common pattern such as `artifact-path: dist/*` works when `dist` contains a ready-made archive, its unpacked package directory, or both. GitHub Release assets are flat, so the pipeline removes the downloaded artifact folder structure before publishing.
+
 ### Test the packaged artifact on its native runner
 
 The optional `artifact-test-command` runs after the target's build artifacts have been uploaded and downloaded again on that same native runner. The reusable workflow passes the command to the provider-neutral release target runner as the `artifact-test` stage; it does not execute or interpret the test command itself. The downloaded files are exposed to the test command through `PIPELINE_ARTIFACT_TEST_DIR`; the provider owns the temporary directory and download transport. GitHub downloads are attempted up to three times in isolated temporary directories to tolerate transient artifact-storage failures.
