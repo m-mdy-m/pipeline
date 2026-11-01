@@ -20,17 +20,27 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out workflow sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Analyze GitHub Actions with zizmor
-        uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        uses: zizmorcore/zizmor-action@v0.7.1
         with:
-          inputs: .
+          inputs: >-
+            .github/workflows/codeql.yml
+            .github/workflows/dependency-review.yml
+            .github/workflows/typos.yml
+            .github/workflows/yamllint.yml
+            .github/workflows/zizmor.yml
+            .github/workflows/pr-title.yml
+            .github/workflows/python-compatibility.yml
+            .github/workflows/scorecard.yml
+            .github/actions/python-quality/action.yml
           collect: all
           persona: regular
           min-severity: high
           min-confidence: high
           advanced-security: "false"
           annotations: "true"
+          config: zizmor.yml
