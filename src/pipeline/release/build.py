@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import tarfile
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -132,31 +135,232 @@ def prepare_release(
     }
 
 
+_ARCHIVE_SUFFIXES = (
+    ".tar.gz",
+    ".tar.xz",
+    ".tar.bz2",
+    ".tgz",
+    ".zip",
+    ".tar",
+    ".7z",
+)
+_WRAPPER_DIRECTORIES = frozenset({"artifacts", "dist", "out", "release"})
+
+
+def _safe_asset_component(value: str) -> str:
+    """Turn a target or directory label into a portable filename component."""
+    normalized = re.sub(r"[^A-Za-z0-9._+-]+", "-", value).strip(".-")
+    return normalized or "artifact"
+
+
+def _has_sibling_archive(directory: Path) -> bool:
+    """Return whether a sibling archive already represents this directory."""
+    return any(
+        directory.with_name(directory.name + suffix).is_file()
+        for suffix in _ARCHIVE_SUFFIXES
+    )
+
+
+def _deterministic_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Remove host-specific ownership and timestamps from generated archives."""
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    info.mtime = 0
+    return info
+
+
+def _selected_artifact_entries(target_root: Path) -> list[Path]:
+    """Return selected paths, removing a single conventional output wrapper."""
+    entries = sorted(target_root.iterdir(), key=lambda item: item.name)
+    while (
+        len(entries) == 1
+        and entries[0].is_dir()
+        and entries[0].name.lower() in _WRAPPER_DIRECTORIES
+    ):
+        entries = sorted(entries[0].iterdir(), key=lambda item: item.name)
+    return entries
+
+
 def assemble_release_assets(assets_directory: str | Path) -> dict[str, Any]:
-    """Create a deterministic SHA256SUMS file for downloaded build artifacts."""
+    """Normalize downloaded artifacts into unique, flat GitHub Release assets.
+
+    GitHub Release assets do not preserve directory structure and require unique
+    asset names. A selected directory is archived as a .tar.gz unless a sibling
+    archive with the same stem already represents it. This supports artifact
+    patterns such as dist/* without uploading a redundant unpacked package tree.
+    """
     root = Path(assets_directory).expanduser().resolve()
     if not root.is_dir():
         raise BuildReleaseError(f"Release assets directory does not exist: {root}")
 
-    files: list[Path] = []
+    staging = root / ".pipeline-release-assets"
+    if staging.is_symlink():
+        raise BuildReleaseError("Release assets contain a symlink at .pipeline-release-assets")
+    if staging.exists():
+        shutil.rmtree(staging)
+
+    # Reject symlinks before archiving or copying any input. This also checks
+    # trees that may later be skipped because an adjacent archive represents them.
     for path in root.rglob("*"):
         if path.is_symlink():
-            raise BuildReleaseError(f"Release assets must not contain symlinks: {path.relative_to(root)}")
-        if path.is_file() and path.name != "SHA256SUMS":
-            files.append(path)
+            raise BuildReleaseError(
+                f"Release assets must not contain symlinks: {path.relative_to(root)}"
+            )
 
-    files.sort(key=lambda item: item.relative_to(root).as_posix())
-    if not files:
-        raise BuildReleaseError("No release artifacts were downloaded")
-
-    lines = [
-        f"{_sha256(path)}  {path.relative_to(root).as_posix()}"
-        for path in files
+    target_roots = [
+        path
+        for path in sorted(root.iterdir(), key=lambda item: item.name)
+        if path.is_dir() and path.name.startswith("release-build-")
     ]
-    checksum_path = root / "SHA256SUMS"
-    _atomic_write(checksum_path, "\n".join(lines) + "\n")
+    if target_roots:
+        targets = [
+            (path.name.removeprefix("release-build-") or "target", path)
+            for path in target_roots
+        ]
+    else:
+        targets = [(root.name or "release", root)]
+
+    staging.mkdir()
+    records: list[dict[str, Any]] = []
+    try:
+        for target_name, target_root in targets:
+            safe_target = _safe_asset_component(target_name)
+            for entry in _selected_artifact_entries(target_root):
+                if entry.name == "SHA256SUMS":
+                    # Generate one combined checksum manifest below.
+                    continue
+                if entry.is_symlink():
+                    raise BuildReleaseError(
+                        f"Release assets must not contain symlinks: {entry.relative_to(root)}"
+                    )
+                if entry.is_dir():
+                    if _has_sibling_archive(entry):
+                        # The archive is the distributable; omit its unpacked tree.
+                        continue
+                    archive_name = (
+                        f"{safe_target}-{_safe_asset_component(entry.name)}.tar.gz"
+                    )
+                    archive_path = staging / archive_name
+                    if archive_path.exists():
+                        raise BuildReleaseError(
+                            f"Directory artifacts produce a duplicate archive name: {archive_name}"
+                        )
+                    with tarfile.open(archive_path, mode="w:gz", compresslevel=9) as archive:
+                        archive.add(
+                            entry,
+                            arcname=entry.name,
+                            recursive=True,
+                            filter=_deterministic_tar_info,
+                        )
+                    records.append(
+                        {
+                            "source": archive_path,
+                            "target": target_name,
+                            "name": archive_name,
+                            "generated": True,
+                        }
+                    )
+                elif entry.is_file():
+                    records.append(
+                        {
+                            "source": entry,
+                            "target": target_name,
+                            "name": entry.name,
+                            "generated": False,
+                        }
+                    )
+
+        if not records:
+            raise BuildReleaseError("No release artifacts were downloaded")
+
+        name_counts = Counter(record["name"] for record in records)
+        used_names: set[str] = set()
+        renames_by_target: dict[str, dict[str, str]] = {}
+        for record in records:
+            original_name = record["name"]
+            final_name = original_name
+            if name_counts[original_name] > 1:
+                final_name = (
+                    f"{_safe_asset_component(record['target'])}-{original_name}"
+                )
+            if final_name in used_names:
+                source = record["source"]
+                relative_parent = (
+                    source.relative_to(root).parent.as_posix()
+                    if not record["generated"]
+                    else original_name
+                )
+                final_name = (
+                    f"{_safe_asset_component(record['target'])}-"
+                    f"{_safe_asset_component(relative_parent)}-{original_name}"
+                )
+            if final_name in used_names:
+                raise BuildReleaseError(
+                    f"Release assets still have a duplicate name after normalization: {final_name}"
+                )
+            record["final_name"] = final_name
+            used_names.add(final_name)
+            if final_name != original_name:
+                renames_by_target.setdefault(record["target"], {})[
+                    original_name
+                ] = final_name
+
+        for record in records:
+            source = record["source"]
+            destination = staging / record["final_name"]
+            if record["generated"]:
+                if source != destination:
+                    shutil.move(str(source), str(destination))
+                continue
+
+            if source.name.endswith(".sha256"):
+                try:
+                    checksum_text = source.read_text(encoding="utf-8")
+                except (OSError, UnicodeError):
+                    checksum_text = None
+                if checksum_text is not None:
+                    for old_name, new_name in renames_by_target.get(
+                        record["target"], {}
+                    ).items():
+                        if old_name.endswith(_ARCHIVE_SUFFIXES):
+                            checksum_text = checksum_text.replace(old_name, new_name)
+                    destination.write_text(checksum_text, encoding="utf-8")
+                    continue
+            shutil.copy2(source, destination)
+
+        publish_files = sorted(
+            (path for path in staging.iterdir() if path.is_file()),
+            key=lambda item: item.name,
+        )
+        if not publish_files:
+            raise BuildReleaseError("No publishable release assets remain after normalization")
+
+        checksum_lines = [
+            f"{_sha256(path)}  {path.name}" for path in publish_files
+        ]
+        _atomic_write(staging / "SHA256SUMS", "\n".join(checksum_lines) + "\n")
+
+        # Replace the downloaded nested artifact tree with the flat directory
+        # consumed by the GitHub Release publishing action.
+        for path in list(root.iterdir()):
+            if path == staging:
+                continue
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        for path in sorted(staging.iterdir(), key=lambda item: item.name):
+            shutil.move(str(path), str(root / path.name))
+        staging.rmdir()
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
+
     return {
         "assets_directory": str(root),
-        "asset_count": len(files),
-        "checksum_file": str(checksum_path),
+        "asset_count": len(records),
+        "checksum_file": str(root / "SHA256SUMS"),
     }
