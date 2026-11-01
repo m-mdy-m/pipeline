@@ -60,6 +60,7 @@ jobs:
         printf 'pipeline reusable release dry run\n' > dist/workflow-smoke.txt
       artifact-path: dist/*
       changelog-path: CHANGELOG.md
+      asset-profile: gitea
       dry-run: true
 
   source-release-dry-run:
