@@ -78,6 +78,18 @@ For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix 
 
 A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
+Set `asset-profile: gitea` to opt into a richer, Gitea-style asset layout without changing the default output of existing consumers. The profile preserves each original artifact and adds an XZ-compressed `.xz` variant, a `.sha256` sidecar for every payload, a machine-readable `manifest.json` with version/tag/commit and per-target artifact metadata, and a top-level `SHA256SUMS`. Existing `.xz` siblings are reused only when they decompress to the exact original bytes; collisions or stale sidecars fail the release rather than silently publishing ambiguous files.
+
+The shared verifier is provider-neutral and can be used by GitHub Actions, GitLab CI, or a local release script:
+
+~~~sh
+PYTHONPATH=.pipeline/src python -m pipeline.release.build_cli verify --assets-directory release-assets
+~~~
+
+The reusable GitHub release workflow also supports optional asset signing and provenance. Set `sign-assets: true` to create keyless Sigstore bundles for the release files. Supplying `gpg-private-key` and, when needed, `gpg-passphrase` adds detached armored `.asc` signatures. Set `attest-release: true` to create a GitHub artifact attestation for `manifest.json` and attach its bundle as `release-attestation.json`; this requires the caller to grant `id-token: write` and `attestations: write`, and GitHub's artifact-attestation feature must be available for the repository. These options are off by default for backwards compatibility.
+
+For cryptographically verified tags, create an annotated signed tag with `git tag -s` and set `require-signed-tag: true` with the corresponding armored public key in the `tag-verification-key` secret. This verifies the signature against the key supplied to CI. GitHub's **Verified** badge also depends on GitHub recognizing that signing key on the account that owns it; a CI verification alone cannot manufacture that badge.
+
 The artifact pattern may match both files and directories. The assemble step normalizes the downloaded results into flat, uniquely named GitHub Release assets:
 
 - A selected directory with a sibling archive of the same name (for example, `dist/app/` and `dist/app.zip`) is treated as an unpacked copy; the existing archive is published and the directory contents are omitted.
@@ -203,7 +215,7 @@ Before creating a stable tag, add a matching heading to the changelog:
 - Describe what is new.
 ~~~
 
-A stable release without its matching changelog section is rejected. Prerelease builds and dry-runs prefer the `[Unreleased]` section. For source-release branch dry-runs, when `[Unreleased]` is absent, the helper uses the newest version-specific section as informational release notes.
+A stable release without its matching changelog section is rejected. Release notes preserve the selected section and all of its categories (for example `Added`, `Changed`, `Fixed`, `Performance`, and `Documentation`); the release workflow does not flatten them into a generic bullet list. Prerelease builds and dry-runs prefer the `[Unreleased]` section. For source-release branch dry-runs, when `[Unreleased]` is absent, the helper uses the newest version-specific section as informational release notes.
 
 ## Permissions and secrets
 

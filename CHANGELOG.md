@@ -4,6 +4,16 @@
 
 ### Added
 
+- Added an opt-in Gitea-style build-release asset profile with XZ variants, per-file SHA-256 sidecars, a machine-readable manifest, and a provider-neutral bundle verifier.
+- Added optional Sigstore signing, GPG detached signatures, GitHub release attestations, and signed-tag verification to the reusable GitHub release workflow.
+
+### Changed
+
+- Kept the existing standard release asset layout as the default; richer release assets are opt-in so existing reusable-workflow callers remain compatible.
+- Added a reusable Python setup composite action for consistent runner setup.
+
+### Added
+
 - Added a provider-neutral build-target catalogue for Linux, macOS, Windows x86/x86_64/ARM64, Android ABIs, iOS device/simulator architectures, and PWA outputs.
 - Added separate `e2e-setup` and `e2e-test` release stages. Projects supply their own emulator/simulator provisioning and E2E commands; the shared runner records target OS, architecture, ABI, and results.
 
