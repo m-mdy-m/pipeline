@@ -195,7 +195,7 @@ def assemble_release_assets(assets_directory: str | Path) -> dict[str, Any]:
     if not root.is_dir():
         raise BuildReleaseError(f"Release assets directory does not exist: {root}")
 
-    staging = root / ".pipeline-release-assets"
+    staging = root.parent / f".{root.name}.pipeline-release-assets"
     if staging.is_symlink():
         raise BuildReleaseError("Release assets contain a symlink at .pipeline-release-assets")
     if staging.exists():
