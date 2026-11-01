@@ -78,19 +78,97 @@ class BuildReleaseTests(unittest.TestCase):
             self.assertTrue(result["prerelease"])
             self.assertIn("- current work", notes)
 
-    def test_assemble_writes_checksums_for_all_assets(self) -> None:
+    def test_assemble_flattens_assets_and_writes_checksums(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             assets = root / "assets"
-            nested = assets / "release-build-linux"
-            nested.mkdir(parents=True)
-            target = nested / "application.tar.gz"
-            target.write_bytes(b"release artifact")
+            target_dir = assets / "release-build-linux"
+            target_dir.mkdir(parents=True)
+            source = target_dir / "application.tar.gz"
+            source.write_bytes(b"release artifact")
+
             result = assemble_release_assets(assets)
-            expected = hashlib.sha256(target.read_bytes()).hexdigest()
+
+            published = assets / "application.tar.gz"
+            expected = hashlib.sha256(published.read_bytes()).hexdigest()
             checksum = (assets / "SHA256SUMS").read_text(encoding="utf-8")
             self.assertEqual(result["asset_count"], 1)
-            self.assertIn(f"{expected}  release-build-linux/application.tar.gz", checksum)
+            self.assertTrue(published.is_file())
+            self.assertFalse(target_dir.exists())
+            self.assertEqual(checksum, f"{expected}  application.tar.gz\\n")
+
+    def test_assemble_skips_directory_represented_by_sibling_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            target = assets / "release-build-windows-x86_64-ucrt64"
+            package_dir = target / "cdin-kernel-1.2.0-windows-x86_64"
+            (package_dir / "include").mkdir(parents=True)
+            (package_dir / "README.md").write_text("unpacked copy", encoding="utf-8")
+            (package_dir / "include" / "kernel.h").write_text("header", encoding="utf-8")
+            archive = target / "cdin-kernel-1.2.0-windows-x86_64.zip"
+            archive.write_bytes(b"already packaged")
+            sidecar = target / (archive.name + ".sha256")
+            sidecar.write_text("abc  " + archive.name + "\\n", encoding="utf-8")
+
+            result = assemble_release_assets(assets)
+
+            self.assertEqual(result["asset_count"], 2)
+            self.assertTrue((assets / archive.name).is_file())
+            self.assertTrue((assets / sidecar.name).is_file())
+            self.assertFalse((assets / "README.md").exists())
+            self.assertFalse((assets / target.name).exists())
+            published_names = {path.name for path in assets.iterdir()}
+            self.assertEqual(
+                published_names,
+                {archive.name, sidecar.name, "SHA256SUMS"},
+            )
+
+    def test_assemble_archives_selected_directories(self) -> None:
+        import tarfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            package_dir = assets / "release-build-linux-x86_64" / "my-package"
+            (package_dir / "bin").mkdir(parents=True)
+            (package_dir / "include").mkdir()
+            (package_dir / "bin" / "app").write_bytes(b"binary")
+            (package_dir / "include" / "app.h").write_text("header", encoding="utf-8")
+
+            result = assemble_release_assets(assets)
+
+            archive_path = assets / "linux-x86_64-my-package.tar.gz"
+            self.assertEqual(result["asset_count"], 1)
+            self.assertTrue(archive_path.is_file())
+            with tarfile.open(archive_path, "r:gz") as archive:
+                members = set(archive.getnames())
+            self.assertIn("my-package/bin/app", members)
+            self.assertIn("my-package/include/app.h", members)
+            self.assertEqual(
+                {path.name for path in assets.iterdir()},
+                {archive_path.name, "SHA256SUMS"},
+            )
+
+    def test_assemble_disambiguates_duplicate_asset_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            for target_name in ("linux-x86_64", "windows-x86_64"):
+                target = assets / f"release-build-{target_name}"
+                target.mkdir(parents=True)
+                archive = target / "application.zip"
+                archive.write_bytes(target_name.encode("ascii"))
+                (target / "application.zip.sha256").write_text(
+                    "abc  application.zip\\n", encoding="utf-8"
+                )
+
+            result = assemble_release_assets(assets)
+
+            self.assertEqual(result["asset_count"], 4)
+            for target_name in ("linux-x86_64", "windows-x86_64"):
+                renamed = f"{target_name}-application.zip"
+                self.assertTrue((assets / renamed).is_file())
+                sidecar = (assets / (renamed + ".sha256")).read_text(encoding="utf-8")
+                self.assertIn(renamed, sidecar)
+            self.assertEqual(len(list(assets.iterdir())), 5)
 
     def test_assemble_rejects_empty_and_symlinked_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
