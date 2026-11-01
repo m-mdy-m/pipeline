@@ -308,8 +308,6 @@ def _write_gitea_profile(
 
 def verify_release_assets(assets_directory: str | Path) -> dict[str, Any]:
     """Verify a flattened build-release bundle, its checksums, and optional XZ manifest."""
-    if profile not in {"standard", "gitea"}:
-        raise BuildReleaseError("Release asset profile must be standard or gitea")
     root = Path(assets_directory).expanduser().resolve()
     if not root.is_dir():
         raise BuildReleaseError(f"Release assets directory does not exist: {root}")
@@ -370,6 +368,9 @@ def verify_release_assets(assets_directory: str | Path) -> dict[str, Any]:
             if (
                 not isinstance(name, str)
                 or Path(name).name != name
+                or name in {".", ".."}
+                or "/" in name
+                or "\\" in name
                 or not isinstance(expected, str)
                 or not re.fullmatch(r"[0-9a-f]{64}", expected)
                 or name in seen
@@ -400,6 +401,10 @@ def verify_release_assets(assets_directory: str | Path) -> dict[str, Any]:
                 if (
                     not isinstance(compressed_name, str)
                     or Path(compressed_name).name != compressed_name
+                    or compressed_name in {".", ".."}
+                    or "/" in compressed_name
+                    or "\\" in compressed_name
+                    or compressed_name == "SHA256SUMS"
                     or not isinstance(compressed_digest, str)
                     or not re.fullmatch(r"[0-9a-f]{64}", compressed_digest)
                 ):
@@ -415,7 +420,11 @@ def verify_release_assets(assets_directory: str | Path) -> dict[str, Any]:
                 compressed_sidecar = root / (compressed_name + ".sha256")
                 if not compressed_sidecar.is_file():
                     raise BuildReleaseError(f"Compressed asset has no checksum sidecar: {compressed_name}")
-                if compressed_sidecar.read_text(encoding="ascii").strip() != f"{compressed_digest}  {compressed_name}":
+                try:
+                    compressed_sidecar_text = compressed_sidecar.read_text(encoding="ascii").strip()
+                except (OSError, UnicodeError) as exc:
+                    raise BuildReleaseError(f"Cannot read compressed asset checksum sidecar: {compressed_name}") from exc
+                if compressed_sidecar_text != f"{compressed_digest}  {compressed_name}":
                     raise BuildReleaseError(f"Compressed asset checksum sidecar mismatch: {compressed_name}")
                 try:
                     digest = hashlib.sha256()
@@ -461,6 +470,8 @@ def assemble_release_assets(
     archive with the same stem already represents it. This supports artifact
     patterns such as dist/* without uploading a redundant unpacked package tree.
     """
+    if profile not in {"standard", "gitea"}:
+        raise BuildReleaseError("Release asset profile must be standard or gitea")
     root = Path(assets_directory).expanduser().resolve()
     if not root.is_dir():
         raise BuildReleaseError(f"Release assets directory does not exist: {root}")
