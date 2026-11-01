@@ -95,7 +95,7 @@ class BuildReleaseTests(unittest.TestCase):
             self.assertEqual(result["asset_count"], 1)
             self.assertTrue(published.is_file())
             self.assertFalse(target_dir.exists())
-            self.assertEqual(checksum, f"{expected}  application.tar.gz\\n")
+            self.assertEqual(checksum, f"{expected}  application.tar.gz\n")
 
     def test_assemble_skips_directory_represented_by_sibling_archive(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,7 +108,7 @@ class BuildReleaseTests(unittest.TestCase):
             archive = target / "cdin-kernel-1.2.0-windows-x86_64.zip"
             archive.write_bytes(b"already packaged")
             sidecar = target / (archive.name + ".sha256")
-            sidecar.write_text("abc  " + archive.name + "\\n", encoding="utf-8")
+            sidecar.write_text("abc  " + archive.name + "\n", encoding="utf-8")
 
             result = assemble_release_assets(assets)
 
@@ -157,7 +157,7 @@ class BuildReleaseTests(unittest.TestCase):
                 archive = target / "application.zip"
                 archive.write_bytes(target_name.encode("ascii"))
                 (target / "application.zip.sha256").write_text(
-                    "abc  application.zip\\n", encoding="utf-8"
+                    "abc  application.zip\n", encoding="utf-8"
                 )
 
             result = assemble_release_assets(assets)
