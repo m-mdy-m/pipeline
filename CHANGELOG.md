@@ -15,7 +15,6 @@
 - Kept the existing standard release asset layout as the default; richer release assets are opt-in so existing reusable-workflow callers remain compatible.
 - Extended the reusable release workflow to download artifacts back onto each build target runner and run optional E2E setup/tests there, keeping GitHub Actions as orchestration only.
 
-
 ## [1.1.2] - 2026-10-31
 
 ### Added
