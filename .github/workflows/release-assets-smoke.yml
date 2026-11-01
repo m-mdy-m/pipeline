@@ -1,0 +1,97 @@
+name: Release asset composite action smoke test
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/release-assets/**"
+      - ".github/workflows/release-assets-smoke.yml"
+      - "src/pipeline/release/**"
+      - "tests/test_build_release.py"
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/actions/release-assets/**"
+      - ".github/workflows/release-assets-smoke.yml"
+      - "src/pipeline/release/**"
+      - "tests/test_build_release.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-assets:
+    name: Exercise assemble, verify, and tamper detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create deterministic release fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-fixture/release-build-linux-x64
+          printf 'pipeline release asset fixture\n' > release-fixture/release-build-linux-x64/pipeline.bin
+          cat > release-fixture/release-meta.json <<'JSON'
+          {
+            "version": "1.2.3",
+            "release_tag": "v1.2.3",
+            "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+            "prerelease": false
+          }
+          JSON
+
+      - name: Assemble Gitea-style release assets
+        uses: ./.github/actions/release-assets
+        with:
+          mode: assemble
+          assets-directory: release-fixture
+          asset-profile: gitea
+          metadata-path: release-fixture/release-meta.json
+
+      - name: Assert manifest, XZ output, and sidecars
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import lzma
+          from pathlib import Path
+
+          root = Path("release-fixture")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest["version"] == "1.2.3"
+          assert manifest["tag"] == "v1.2.3"
+          assert len(manifest["assets"]) == 1
+          row = manifest["assets"][0]
+          original = root / row["name"]
+          compressed = root / row["compressed"]["name"]
+          assert lzma.decompress(compressed.read_bytes()) == original.read_bytes()
+          assert hashlib.sha256(original.read_bytes()).hexdigest() == row["sha256"]
+          assert (root / (original.name + ".sha256")).is_file()
+          assert (root / (compressed.name + ".sha256")).is_file()
+          PY
+          (cd release-fixture && sha256sum --check SHA256SUMS)
+
+      - name: Verify the assembled release bundle
+        uses: ./.github/actions/release-assets
+        with:
+          mode: verify
+          assets-directory: release-fixture
+
+      - name: Prove that tampering is rejected
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          printf 'tampered\n' >> release-fixture/pipeline.bin
+          if python -m pipeline.release.build_cli verify --assets-directory release-fixture; then
+            echo "Verifier accepted a modified release asset." >&2
+            exit 1
+          fi

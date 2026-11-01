@@ -15,12 +15,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
   ci:
+    permissions:
+      contents: read
     name: Reusable Python CI
     uses: ./.github/workflows/ci.yml
     with:
@@ -30,16 +30,22 @@ jobs:
       test-command: PYTHONPATH=src python -m unittest discover -s tests -p 'test_*.py' -v
 
   docs:
+    permissions:
+      contents: read
     name: Reusable documentation check
     uses: ./.github/workflows/docs-check.yml
 
   security:
+    permissions:
+      contents: read
     name: Reusable secret scan
     uses: ./.github/workflows/security-check.yml
     with:
       scan-path: src
 
   benchmark:
+    permissions:
+      contents: read
     name: Reusable benchmark dry run
     uses: ./.github/workflows/benchmark.yml
     with:
@@ -49,6 +55,10 @@ jobs:
       benchmark-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
 
   release-dry-run:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     name: Reusable build release dry run
     uses: ./.github/workflows/release.yml
     with:
@@ -64,6 +74,8 @@ jobs:
       dry-run: true
 
   source-release-dry-run:
+    permissions:
+      contents: read
     name: Reusable source release dry run
     uses: ./.github/workflows/source-release.yml
     with:
@@ -75,6 +87,8 @@ jobs:
       dry-run: true
 
   docker-dry-run:
+    permissions:
+      contents: read
     name: Reusable Docker build without push
     uses: ./.github/workflows/docker-publish.yml
     with:
@@ -84,6 +98,8 @@ jobs:
       dry-run: true
 
   npm-dry-run:
+    permissions:
+      contents: read
     name: Reusable npm package dry run
     uses: ./.github/workflows/npm-publish.yml
     with:
@@ -92,6 +108,8 @@ jobs:
       dry-run: true
 
   python-package-dry-run:
+    permissions:
+      contents: read
     name: Reusable Python package dry run
     uses: ./.github/workflows/python-publish.yml
     with:
@@ -99,6 +117,10 @@ jobs:
       dry-run: true
 
   pages-dry-run:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     name: Reusable Pages build without deployment
     uses: ./.github/workflows/pages.yml
     with:
