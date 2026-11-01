@@ -1,6 +1,17 @@
 name: Reusable Workflow Dry Run
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "src/**"
+      - "tests/**"
+      - "examples/workflow-smoke/**"
+      - "pyproject.toml"
+      - "pipeline.toml"
+      - "Makefile"
+      - "CHANGELOG.md"
   push:
     branches: [main, develop]
     paths:
