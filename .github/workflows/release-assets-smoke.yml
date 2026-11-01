@@ -30,12 +30,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Exercise the shared Python setup action
+        uses: ./.github/actions/python-setup
+        with:
+          python-version: "3.12"
+
+      - name: Verify the Python runtime
+        run: python -c "import sys; assert sys.version_info[:2] == (3, 12)"
+
       - name: Create deterministic release fixture
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-fixture/release-build-linux-x64
+          mkdir -p standard-fixture/release-build-linux-x64
           printf 'pipeline release asset fixture\n' > release-fixture/release-build-linux-x64/pipeline.bin
+          printf 'legacy standard fixture\n' > standard-fixture/release-build-linux-x64/legacy.bin
           cat > release-meta.json <<'JSON'
           {
             "version": "1.2.3",
@@ -83,6 +93,27 @@ jobs:
         with:
           mode: verify
           assets-directory: release-fixture
+
+      - name: Assemble the backwards-compatible standard profile
+        uses: ./.github/actions/release-assets
+        with:
+          mode: assemble
+          assets-directory: standard-fixture
+
+      - name: Verify standard profile compatibility
+        uses: ./.github/actions/release-assets
+        with:
+          mode: verify
+          assets-directory: standard-fixture
+
+      - name: Assert standard profile preserves the legacy layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s standard-fixture/legacy.bin
+          test -s standard-fixture/SHA256SUMS
+          test ! -e standard-fixture/manifest.json
+          test ! -e standard-fixture/legacy.bin.xz
 
       - name: Prove that tampering is rejected
         shell: bash
