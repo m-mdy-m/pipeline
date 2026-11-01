@@ -14,7 +14,6 @@
 - Added merge-queue support to repository CI.
 - Configured zizmor to accept version-tag references without requiring commit-SHA pins, matching the repository's tag-based action policy.
 
-
 ## [1.1.2] - 2026-10-31
 
 ### Added
