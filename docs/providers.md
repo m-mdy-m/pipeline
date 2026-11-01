@@ -159,6 +159,9 @@ Java.
 | `zizmor.yml` | Static security analysis of GitHub Actions workflows and local composite actions. |
 | `yamllint.yml` | YAML syntax/style checks across GitHub and GitLab provider files. |
 | `typos.yml` | Spelling checks for source, documentation, and workflow files. |
+| `python-compatibility.yml` | Compiles source and runs the complete unit suite on Python 3.11, 3.12, and 3.13 through a shared composite action. |
+| `pr-title.yml` | Validates pull request titles against Conventional Commits. |
+| `scorecard.yml` | Runs scheduled OSSF Scorecard analysis and stores its SARIF report as a workflow artifact. |
 | `benchmark.yml` | Repeated command timing and result artifact upload. |
 | `release.yml` | Matrix build/test, checksum assembly, and GitHub Release publishing. |
 | `source-release.yml` | Validated source ZIP from the exact tagged Git snapshot, with secret scanning. |
@@ -171,11 +174,20 @@ The repository also has `reusable-smoke.yml`, a push/dispatch self-test that cal
 
 ### Repository-level quality workflows
 
-The `dependency-review.yml` workflow requires GitHub's Dependency graph feature.
-Enable it under repository Settings → Security → Code security and analysis, then
-set the repository Actions variable `PIPELINE_DEPENDENCY_REVIEW_ENABLED=true`.
-Until both prerequisites are enabled, its job is intentionally skipped rather than
-failing every pull request on repositories without dependency graph support.
+The `dependency-review.yml` workflow uses GitHub's Dependency Review API.
+Enable the repository Dependency graph under Settings → Security → Code security
+and analysis, then set the Actions variable
+`PIPELINE_DEPENDENCY_REVIEW_ENABLED=true`. Until enabled, its optional job is
+skipped so repositories without the feature do not receive a false CI failure.
+
+The `zizmor.yml` workflow scans the new workflow entry points and local
+`python-quality` action. Root `zizmor.yml` explicitly accepts version-tag refs
+(`ref-pin`) rather than enforcing commit-SHA pins. Dependabot keeps GitHub Action
+tags and Python package metadata updated through weekly pull requests.
+
+The Python matrix runs the same unit suite on each supported interpreter.
+The `python-quality` composite action is shared by the matrix workflow so its
+setup and test steps are exercised by CI rather than existing as unused YAML.
 
 The dependency-review, CodeQL, zizmor, yamllint, and typos workflows are repository automation rather than reusable `workflow_call` endpoints. Dependency review and CodeQL use GitHub security services; zizmor audits GitHub-specific workflow/action configuration; yamllint deliberately covers both `.github/` and the canonical GitLab YAML entry points. They do not move task execution or release rules out of `src/pipeline/`. GitLab consumers can keep invoking the same provider-neutral Python commands from their own CI jobs. It is a regular workflow for this repository, not a `workflow_call` endpoint for consumers.
 

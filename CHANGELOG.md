@@ -4,12 +4,16 @@
 
 ### Added
 
-- Added a provider-neutral build-target catalogue for Linux, macOS, Windows x86/x86_64/ARM64, Android ABIs, iOS device/simulator architectures, and PWA outputs.
-- Added separate `e2e-setup` and `e2e-test` release stages. Projects supply their own emulator/simulator provisioning and E2E commands; the shared runner records target OS, architecture, ABI, and results.
+- Added repository-level dependency review, CodeQL, zizmor, YAML lint, and typo checks.
+- Added Python 3.11–3.13 compatibility CI, Conventional Commit pull request title validation, and scheduled OSSF Scorecard analysis.
+- Added a reusable Python quality composite action and workflow contract tests for version-tagged actions, permissions, and workflow inventory.
+- Added Dependabot schedules for GitHub Actions and Python project metadata.
 
 ### Changed
 
-- Extended the reusable release workflow to download artifacts back onto each build target runner and run optional E2E setup/tests there, keeping GitHub Actions as orchestration only.
+- Added merge-queue support to repository CI.
+- Configured zizmor to accept version-tag references without requiring commit-SHA pins, matching the repository's tag-based action policy.
+
 
 ## [1.1.2] - 2026-10-31
 
