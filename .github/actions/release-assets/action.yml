@@ -1,0 +1,66 @@
+name: Pipeline release assets
+description: Assemble or verify release assets using the provider-neutral Pipeline release core.
+
+inputs:
+  mode:
+    description: Select assemble or verify.
+    required: true
+  assets-directory:
+    description: Directory containing downloaded release artifacts.
+    required: false
+    default: release-assets
+  asset-profile:
+    description: Asset layout profile used by assemble mode.
+    required: false
+    default: standard
+  metadata-path:
+    description: Optional release-meta.json produced by the prepare stage.
+    required: false
+    default: ""
+  python-version:
+    description: Python version used to execute Pipeline.
+    required: false
+    default: "3.12"
+
+outputs:
+  checksum-file:
+    description: Path to the verified SHA256SUMS file.
+    value: ${{ inputs.assets-directory }}/SHA256SUMS
+  manifest-file:
+    description: Path to the optional release manifest.
+    value: ${{ inputs.assets-directory }}/manifest.json
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run the provider-neutral release helper
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        MODE: ${{ inputs.mode }}
+        ASSETS_DIRECTORY: ${{ inputs.assets-directory }}
+        ASSET_PROFILE: ${{ inputs.asset-profile }}
+        METADATA_PATH: ${{ inputs.metadata-path }}
+      run: |
+        set -euo pipefail
+        case "$MODE" in
+          assemble)
+            args=(--assets-directory "$ASSETS_DIRECTORY" --profile "$ASSET_PROFILE")
+            if [[ -n "$METADATA_PATH" ]]; then
+              args+=(--metadata "$METADATA_PATH")
+            fi
+            python -m pipeline.release.build_cli assemble "${args[@]}"
+            ;;
+          verify)
+            python -m pipeline.release.build_cli verify --assets-directory "$ASSETS_DIRECTORY"
+            ;;
+          *)
+            echo "mode must be assemble or verify" >&2
+            exit 2
+            ;;
+        esac
