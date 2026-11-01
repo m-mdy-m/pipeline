@@ -17,7 +17,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   dependency-review:
@@ -27,6 +26,9 @@ jobs:
     if: vars.PIPELINE_DEPENDENCY_REVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Check out the pull request
         uses: actions/checkout@v7.0.1
@@ -40,3 +42,23 @@ jobs:
           fail-on-scopes: runtime,development
           comment-summary-in-pr: on-failure
           show-patched-versions: true
+
+  dependency-review-prerequisite:
+    name: Report Dependency Graph prerequisite
+    if: vars.PIPELINE_DEPENDENCY_REVIEW_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - name: Explain why dependency scanning is disabled
+        shell: bash
+        run: |
+          {
+            echo "## Dependency review is not configured"
+            echo
+            echo "The dependency graph feature is not enabled for this repository."
+            echo "Enable it under Settings → Security → Code security and analysis,"
+            echo "then set the Actions variable `PIPELINE_DEPENDENCY_REVIEW_ENABLED=true`."
+            echo "The dependency review action will run automatically on future dependency PRs."
+          } >> "$GITHUB_STEP_SUMMARY"

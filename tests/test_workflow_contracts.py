@@ -73,6 +73,7 @@ class WorkflowSecurityContractTests(unittest.TestCase):
         workflow = (WORKFLOWS / "dependency-review.yml").read_text(encoding="utf-8")
         self.assertIn("vars.PIPELINE_DEPENDENCY_REVIEW_ENABLED == 'true'", workflow)
         self.assertIn("actions/dependency-review-action@v5.0.0", workflow)
+        self.assertIn("dependency-review-prerequisite:", workflow)
 
     def test_read_only_default_permissions_are_declared(self) -> None:
         for name in NEW_WORKFLOWS:
