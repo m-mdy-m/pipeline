@@ -1,0 +1,41 @@
+name: YAML lint
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".gitlab-ci.yml"
+      - ".yamllint.yml"
+      - "**/*.yml"
+      - "**/*.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  yamllint:
+    name: Lint provider workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install yamllint
+        run: python -m pip install --disable-pip-version-check "yamllint==1.37.1"
+
+      - name: Lint GitHub and GitLab provider files
+        run: >-
+          yamllint
+          --config-file .yamllint.yml
+          .github/workflows
+          .github/actions
+          .gitlab-ci.yml

@@ -154,6 +154,11 @@ Java.
 | `ci.yml` | Build, test, and optional lint for Go, Node.js, Rust, Python, Java, .NET, C, or custom projects. |
 | `docs-check.yml` | Markdown lint and GitHub Actions syntax validation. |
 | `security-check.yml` | Gitleaks scan of a selected project directory. |
+| `dependency-review.yml` | Review dependency changes in pull requests and block high-severity vulnerable updates. |
+| `codeql.yml` | Scheduled and change-triggered CodeQL analysis of the Python source tree. |
+| `zizmor.yml` | Static security analysis of GitHub Actions workflows and local composite actions. |
+| `yamllint.yml` | YAML syntax/style checks across GitHub and GitLab provider files. |
+| `typos.yml` | Spelling checks for source, documentation, and workflow files. |
 | `benchmark.yml` | Repeated command timing and result artifact upload. |
 | `release.yml` | Matrix build/test, checksum assembly, and GitHub Release publishing. |
 | `source-release.yml` | Validated source ZIP from the exact tagged Git snapshot, with secret scanning. |
@@ -162,7 +167,11 @@ Java.
 | `python-publish.yml` | Python sdist/wheel build, Twine validation, and PyPI publishing. |
 | `pages.yml` | Site build, Pages artifact upload, and optional deployment. |
 
-The repository also has `reusable-smoke.yml`, a push/dispatch self-test that calls these reusable workflows with dry-run settings. It is a regular workflow for this repository, not a `workflow_call` endpoint for consumers.
+The repository also has `reusable-smoke.yml`, a push/dispatch self-test that calls these reusable workflows with dry-run settings.
+
+### Repository-level quality workflows
+
+The dependency-review, CodeQL, zizmor, yamllint, and typos workflows are repository automation rather than reusable `workflow_call` endpoints. Dependency review and CodeQL use GitHub security services; zizmor audits GitHub-specific workflow/action configuration; yamllint deliberately covers both `.github/` and the canonical GitLab YAML entry points. They do not move task execution or release rules out of `src/pipeline/`. GitLab consumers can keep invoking the same provider-neutral Python commands from their own CI jobs. It is a regular workflow for this repository, not a `workflow_call` endpoint for consumers.
 
 ### Dry-run behavior
 
