@@ -22,6 +22,9 @@ permissions:
 jobs:
   dependency-review:
     name: Review dependency changes
+    # Enable the repository Dependency graph and set this variable to "true"
+    # to activate the action. An unset variable leaves the optional job skipped.
+    if: vars.PIPELINE_DEPENDENCY_REVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

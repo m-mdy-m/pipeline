@@ -171,6 +171,12 @@ The repository also has `reusable-smoke.yml`, a push/dispatch self-test that cal
 
 ### Repository-level quality workflows
 
+The `dependency-review.yml` workflow requires GitHub's Dependency graph feature.
+Enable it under repository Settings → Security → Code security and analysis, then
+set the repository Actions variable `PIPELINE_DEPENDENCY_REVIEW_ENABLED=true`.
+Until both prerequisites are enabled, its job is intentionally skipped rather than
+failing every pull request on repositories without dependency graph support.
+
 The dependency-review, CodeQL, zizmor, yamllint, and typos workflows are repository automation rather than reusable `workflow_call` endpoints. Dependency review and CodeQL use GitHub security services; zizmor audits GitHub-specific workflow/action configuration; yamllint deliberately covers both `.github/` and the canonical GitLab YAML entry points. They do not move task execution or release rules out of `src/pipeline/`. GitLab consumers can keep invoking the same provider-neutral Python commands from their own CI jobs. It is a regular workflow for this repository, not a `workflow_call` endpoint for consumers.
 
 ### Dry-run behavior

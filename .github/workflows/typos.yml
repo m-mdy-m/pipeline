@@ -34,4 +34,7 @@ jobs:
           chmod +x "${RUNNER_TEMP}/typos"
 
       - name: Check spelling
-        run: "${RUNNER_TEMP}/typos" --format brief
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/typos" --format brief
