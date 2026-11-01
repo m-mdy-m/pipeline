@@ -599,24 +599,19 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: ./.pipeline/.github/actions/python-setup
-        with:
-          python-version: "3.12"
-
       - name: Assemble the selected release asset profile
-        env:
-          PYTHONPATH: .pipeline/src
-          ASSET_PROFILE: ${{ inputs.asset-profile }}
-        run: |
-          python -m pipeline.release.build_cli assemble \
-            --assets-directory release-assets \
-            --profile "$ASSET_PROFILE" \
-            --metadata release-metadata/release-meta.json
+        uses: ./.pipeline/.github/actions/release-assets
+        with:
+          mode: assemble
+          assets-directory: release-assets
+          asset-profile: ${{ inputs.asset-profile }}
+          metadata-path: release-metadata/release-meta.json
 
       - name: Verify assembled release assets
-        env:
-          PYTHONPATH: .pipeline/src
-        run: python -m pipeline.release.build_cli verify --assets-directory release-assets
+        uses: ./.pipeline/.github/actions/release-assets
+        with:
+          mode: verify
+          assets-directory: release-assets
 
       - uses: actions/upload-artifact@v7
         with:
@@ -650,10 +645,6 @@ jobs:
           path: .pipeline
           fetch-depth: 1
           persist-credentials: false
-
-      - uses: ./.pipeline/.github/actions/python-setup
-        with:
-          python-version: "3.12"
 
       - name: Install Cosign
         if: inputs.sign-assets
@@ -731,9 +722,10 @@ jobs:
           PY
 
       - name: Verify signed and attested release assets
-        env:
-          PYTHONPATH: .pipeline/src
-        run: python -m pipeline.release.build_cli verify --assets-directory release-assets
+        uses: ./.pipeline/.github/actions/release-assets
+        with:
+          mode: verify
+          assets-directory: release-assets
 
       - uses: actions/upload-artifact@v7
         with:
