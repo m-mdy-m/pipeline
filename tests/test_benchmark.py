@@ -161,7 +161,7 @@ class BenchCliTests(unittest.TestCase):
 
     def test_config_table_supplies_command_and_threshold(self) -> None:
         (self.root / "pipeline.toml").write_text(
-            f'[ci.bench]\ncommand = "{sys.executable} bench.py"\nparser = "gobench"\ncount = 1\nthreshold_percent = 1000\n'
+            f'[ci.bench]\ncommand = {json.dumps(sys.executable + " bench.py")}\nparser = "gobench"\ncount = 1\nthreshold_percent = 1000\n'
         )
         (self.root / "value.txt").write_text("400\n")
         code, _ = run_cli("bench", "--root", str(self.root), "--against", "HEAD")
