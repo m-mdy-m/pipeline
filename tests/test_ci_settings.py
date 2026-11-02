@@ -114,19 +114,19 @@ class GoChecksTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        (self.tmp / "go.mod").write_text("module demo\n\ngo 1.22\n")
+        (self.tmp / "go.mod").write_text("module demo\n\ngo 1.22\n", newline="\n")
 
     def test_gofmt(self) -> None:
-        (self.tmp / "a.go").write_text("package a\n\nfunc F() int { return 1 }\n")
+        (self.tmp / "a.go").write_text("package a\n\nfunc F() int { return 1 }\n", newline="\n")
         self.assertEqual(checks.gofmt(self.tmp, []), 0)
-        (self.tmp / "a.go").write_text("package a\nfunc F()   int{return 1}\n")
+        (self.tmp / "a.go").write_text("package a\nfunc F()   int{return 1}\n", newline="\n")
         self.assertEqual(checks.gofmt(self.tmp, []), 1)
 
     def test_go_mod_tidy_detects_and_restores(self) -> None:
-        (self.tmp / "a.go").write_text("package a\n")
+        (self.tmp / "a.go").write_text("package a\n", newline="\n")
         self.assertEqual(checks.go_mod_tidy(self.tmp, []), 0)
         original = "module demo\n\ngo 1.22\n\nrequire example.invalid/x v1.0.0\n"
-        (self.tmp / "go.mod").write_text(original)
+        (self.tmp / "go.mod").write_text(original, newline="\n")
         # offline: tidy may fail resolving the module; either way the file must be restored
         code = checks.go_mod_tidy(self.tmp, [])
         self.assertNotEqual(code, 0)
