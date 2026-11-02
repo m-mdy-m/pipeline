@@ -160,7 +160,7 @@ def split_command(text: str) -> tuple[str, ...]:
     try:
         parts = shlex.split(text, posix=os.name != "nt")
         if os.name == "nt":
-            parts = [part[1:-1] if len(part) >= 2 and part[0] == part[-1] and part[0] in "\'\\"" else part for part in parts]
+            parts = [part[1:-1] if len(part) >= 2 and part[0] == part[-1] and part[0] in ("'", '"' ) else part for part in parts]
     except ValueError as exc:
         raise BenchmarkError(f"invalid benchmark command: {exc}") from exc
     if not parts:
