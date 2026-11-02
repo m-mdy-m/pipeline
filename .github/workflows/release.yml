@@ -388,7 +388,7 @@ jobs:
         id: download_artifacts
         if: inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-build-${{ matrix.id }}
           path: ${{ runner.temp }}/release-artifact-test-1
@@ -397,7 +397,7 @@ jobs:
         id: download_artifacts_retry_2
         if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && steps.download_artifacts.outcome != 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-build-${{ matrix.id }}
           path: ${{ runner.temp }}/release-artifact-test-2
@@ -406,7 +406,7 @@ jobs:
         id: download_artifacts_retry_3
         if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null || inputs.e2e-setup-command != '' || matrix.e2e_setup_command != null || inputs.e2e-test-command != '' || matrix.e2e_test_command != null) && steps.download_artifacts.outcome != 'success' && steps.download_artifacts_retry_2.outcome != 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-build-${{ matrix.id }}
           path: ${{ runner.temp }}/release-artifact-test-3
@@ -574,17 +574,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-notes
           path: release-notes
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-metadata
           path: release-metadata
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-build-*
           path: release-assets
@@ -632,7 +632,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-bundle
           path: .
@@ -750,13 +750,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         if: needs.sign-and-attest.result == 'success'
         with:
           name: release-publish-bundle
           path: .
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         if: needs.sign-and-attest.result == 'skipped'
         with:
           name: release-bundle

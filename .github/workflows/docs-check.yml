@@ -19,7 +19,7 @@ jobs:
             !node_modules
       - name: Validate GitHub Actions syntax and expressions
         uses: reviewdog/action-actionlint@v1
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: "3.12"
       - name: Check pipeline repository contracts
