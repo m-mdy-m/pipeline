@@ -13,6 +13,7 @@ All runtime code lives in `src/pipeline/` and is installable through `pyproject.
 | Package | Responsibility |
 | --- | --- |
 | `core/` | TOML validation, dependency planning, task execution, context, and artifact collection. |
+| `toolchains/` | Language presets (Go, Rust, Java, .NET, Node.js, Python, C/C++, Docker): detection, install/lint/build/test planning and overrides. |
 | `providers/` | GitHub, GitLab, and local environment adapters. |
 | `benchmark/` | Repeated command execution and benchmark reports. |
 | `release/` | Source snapshots, release notes, archive creation, verification, and checksums. |
@@ -33,7 +34,7 @@ After translation, each adapter calls the same task core. It does not duplicate 
 
 Workflow files under `.github/workflows/` are the GitHub provider: they schedule jobs, select runners, provision provider-specific toolchains, pass context into `src/pipeline/`, and call GitHub services such as Actions artifacts, Releases, Docker publishing, npm/PyPI publishing, or Pages deployment. Reusable workflows declare `on: workflow_call` and can be referenced by another repository. GitLab uses `.gitlab-ci.yml` for the equivalent scheduling, credentials, artifact transport, and publishing integration.
 
-Provider code is intentionally thin. It may translate environment variables and invoke the source package; shared logic stays in `src/pipeline/`. Local execution uses the same core without a hosted CI provider.
+Provider code is intentionally thin: a composite action or job may install Node, Go, Rust, Java, .NET or Python, but it calls `pipeline ci`; it never repeats `npm ci`, `go test` or `cargo test`. The GitHub adapter may add GitHub-only presentation (job summary, annotations) on top of the report the core produced. Tests enforce this boundary. Provider code may translate environment variables and invoke the source package; shared logic stays in `src/pipeline/`. Local execution uses the same core without a hosted CI provider.
 
 ## What pipeline does not do
 

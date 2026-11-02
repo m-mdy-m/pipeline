@@ -1,0 +1,13 @@
+# Append to psx/pipeline.toml (or save it as pipeline.toml).
+[ci]
+language = "go"
+
+[ci.options]
+gofmt = true      # psx currently fails the build when `gofmt -l` lists files
+tidy = true       # go mod tidy must not change go.mod/go.sum
+race = true       # go test -race ./...
+golangci = true   # golangci-lint run (installed by the workflow)
+
+[ci.bench]
+parser = "gobench"
+threshold_percent = 30

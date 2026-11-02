@@ -1,0 +1,8 @@
+# log.c already has `make check` (build, tests, examples, docs, ABI and end-to-end checks).
+[ci]
+language = "c"
+skip = ["configure"]
+
+[ci.commands]
+build = "make"
+test = "make check"

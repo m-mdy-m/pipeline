@@ -1,0 +1,19 @@
+# Copy to agas/.github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # bun install --frozen-lockfile, bun run build, bun run test
+      - uses: m-mdy-m/pipeline/.github/actions/node-quality@main   # pin a tag or SHA
+        with:
+          bun-version: latest

@@ -1,0 +1,74 @@
+name: Run Pipeline tasks
+description: Run tasks from a project's pipeline.toml through the provider-neutral engine and keep the JSON report.
+
+inputs:
+  tasks:
+    description: Space separated task names from pipeline.toml.
+    required: true
+  working-directory:
+    description: Project directory containing pipeline.toml.
+    required: false
+    default: "."
+  config:
+    description: Path to the task file, relative to working-directory.
+    required: false
+    default: pipeline.toml
+  python-version:
+    description: Python used to run the Pipeline engine (3.11 or newer).
+    required: false
+    default: "3.12"
+  pipeline-source:
+    description: Directory containing the engine's src/ folder. Empty uses the checkout this action came from.
+    required: false
+    default: ""
+  upload-report:
+    description: Upload the JSON task report as a workflow artifact.
+    required: false
+    default: "true"
+  report-name:
+    description: Name of the uploaded report artifact.
+    required: false
+    default: pipeline-task-report
+
+outputs:
+  report-path:
+    description: Path of the JSON task report.
+    value: ${{ steps.run.outputs.report_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run the task graph
+      id: run
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        ACTION_SOURCE: ${{ github.action_path }}/../../../src
+        CUSTOM_SOURCE: ${{ inputs.pipeline-source }}
+        TASKS: ${{ inputs.tasks }}
+        PROJECT_DIR: ${{ inputs.working-directory }}
+        CONFIG_FILE: ${{ inputs.config }}
+        REPORT_DIR: ${{ runner.temp }}/pipeline-report
+      run: |
+        set -euo pipefail
+        mkdir -p "$REPORT_DIR"
+        report="$REPORT_DIR/pipeline-result.json"
+        read -r -a task_names <<< "$TASKS"
+        [[ ${#task_names[@]} -gt 0 ]] || { echo "tasks must name at least one task" >&2; exit 2; }
+        echo "report_path=$report" >> "$GITHUB_OUTPUT"
+        PYTHONPATH="${CUSTOM_SOURCE:-$ACTION_SOURCE}" python -m pipeline.providers.github task "${task_names[@]}" \
+          --root "$PROJECT_DIR" --config "$CONFIG_FILE" --result "$report" --json
+
+    - name: Upload the task report
+      if: always() && inputs.upload-report == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.report-name }}-${{ github.job }}-${{ strategy.job-index }}
+        path: ${{ runner.temp }}/pipeline-report/
+        if-no-files-found: ignore
+        retention-days: 7

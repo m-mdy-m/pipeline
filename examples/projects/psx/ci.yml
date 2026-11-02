@@ -1,0 +1,56 @@
+# Copy to psx/.github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Go quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          install-only: true
+      # gofmt, go vet, go mod tidy, golangci-lint, go build and go test -race
+      # all come from the shared engine; options live in pipeline.toml [ci].
+      - uses: m-mdy-m/pipeline/.github/actions/go-quality@main   # pin a tag or SHA
+        with:
+          go-version: stable
+
+  psx-on-itself:
+    name: psx checks its own structure
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v7
+      - uses: m-mdy-m/pipeline/.github/actions/go-quality@main
+        with:
+          stages: build
+          build-command: go build -o build/psx ./cmd/psx
+      - run: ./build/psx check --config psx.yml
+
+  benchmark:
+    name: Benchmarks versus the base branch
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main
+        with:
+          mode: bench
+          language: go
+          bench-against: ${{ github.event.pull_request.base.sha }}
+          bench-report-only: "true"

@@ -1,0 +1,7 @@
+# idios keeps its own task graph in pipeline.toml; this table only adds the Go preset options.
+[ci]
+language = "go"
+
+[ci.options]
+gofmt = true
+race = true

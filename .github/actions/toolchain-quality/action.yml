@@ -1,0 +1,281 @@
+name: Pipeline toolchain quality
+description: Provision the runtime for any supported language (or auto-detect it), then run the Pipeline engine's install, lint, build and test stages.
+
+inputs:
+  language:
+    description: auto, go, node, rust, java, dotnet, python, c, docker, or custom. "auto" detects it from the project files.
+    required: false
+    default: auto
+  go-version:
+    description: Go version or "stable".
+    required: false
+    default: "stable"
+  node-version:
+    description: Node.js version.
+    required: false
+    default: "22"
+  rust-toolchain:
+    description: Rust toolchain channel or version.
+    required: false
+    default: "stable"
+  java-version:
+    description: Java version.
+    required: false
+    default: "21"
+  dotnet-version:
+    description: .NET SDK version.
+    required: false
+    default: "8.0.x"
+  pnpm-version:
+    description: Optional pnpm version to activate through Corepack when language is node.
+    required: false
+    default: ""
+  vim-version:
+    description: Vim version (stable, nightly or a tag) when language is vim.
+    required: false
+    default: stable
+  bun-version:
+    description: Bun version used when the Node.js project uses bun.
+    required: false
+    default: latest
+  cache:
+    description: Cache npm, pnpm or yarn dependencies when a lockfile exists (true or false).
+    required: false
+    default: "true"
+  mode:
+    description: ci runs install/lint/build/test; bench runs the language's benchmarks and compares them.
+    required: false
+    default: ci
+  bench-against:
+    description: Git ref to benchmark on the same machine and compare with (needs fetch-depth 0).
+    required: false
+    default: ""
+  bench-baseline:
+    description: Baseline JSON file to compare with, relative to working-directory.
+    required: false
+    default: ""
+  bench-command:
+    description: Benchmark command replacing the preset.
+    required: false
+    default: ""
+  bench-parser:
+    description: gobench or time.
+    required: false
+    default: ""
+  bench-count:
+    description: Repetitions per benchmark (0 uses the preset default).
+    required: false
+    default: "0"
+  bench-threshold:
+    description: Percent slower that counts as a regression (empty uses pipeline.toml or 25).
+    required: false
+    default: ""
+  bench-report-only:
+    description: Report regressions without failing the job.
+    required: false
+    default: "false"
+  bench-update-baseline:
+    description: Write the current results to bench-baseline instead of comparing.
+    required: false
+    default: "false"
+  working-directory:
+    description: Project directory, relative to the workspace.
+    required: false
+    default: "."
+  install-command:
+    description: Replace the preset install command. Split like a shell line, not run by a shell.
+    required: false
+    default: ""
+  lint-command:
+    description: Replace the preset lint command.
+    required: false
+    default: ""
+  build-command:
+    description: Replace the preset build command.
+    required: false
+    default: ""
+  test-command:
+    description: Replace the preset test command.
+    required: false
+    default: ""
+  stages:
+    description: Comma separated subset of install, configure, lint, build, test. Empty runs every stage the preset defines.
+    required: false
+    default: ""
+  skip:
+    description: Comma separated stages to skip.
+    required: false
+    default: ""
+  options:
+    description: Newline separated KEY=VALUE preset options such as package_manager=pnpm.
+    required: false
+    default: ""
+  timeout-seconds:
+    description: Timeout applied to each stage.
+    required: false
+    default: "1800"
+  python-version:
+    description: Python used to run the Pipeline engine itself (3.11 or newer).
+    required: false
+    default: "3.12"
+
+outputs:
+  language:
+    description: Language the engine used.
+    value: ${{ steps.pipeline.outputs.language }}
+  package-manager:
+    description: Package manager chosen for Node.js projects, otherwise empty.
+    value: ${{ steps.pipeline.outputs.package_manager }}
+  succeeded:
+    description: "true when every stage passed (mode ci)."
+    value: ${{ steps.pipeline.outputs.succeeded }}
+  regressions:
+    description: Number of benchmark regressions (mode bench).
+    value: ${{ steps.pipeline.outputs.regressions }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python for the Pipeline engine
+      uses: actions/setup-python@v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Detect the project language
+      id: detect
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        LANGUAGE: ${{ inputs.language }}
+        PROJECT_DIR: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ "$LANGUAGE" == "auto" ]]; then
+          LANGUAGE="$(python -m pipeline detect --root "$PROJECT_DIR" --json | python -c 'import json,sys; print(json.load(sys.stdin)["primary"])')"
+          [[ -n "$LANGUAGE" ]] || { echo "Could not detect a language in $PROJECT_DIR" >&2; exit 2; }
+        fi
+        echo "language=$LANGUAGE" >> "$GITHUB_OUTPUT"
+        python -m pipeline detect --root "$PROJECT_DIR" --json | python -c 'import json,sys; d=json.load(sys.stdin); print("package_manager=%s" % d["package_manager"]); print("node_cache=%s" % d["node_cache"])' >> "$GITHUB_OUTPUT"
+
+    - name: Set up Go
+      if: steps.detect.outputs.language == 'go'
+      uses: actions/setup-go@v7
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: true
+        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+    - name: Activate Corepack package managers
+      if: steps.detect.outputs.language == 'node' && (steps.detect.outputs.package_manager == 'pnpm' || steps.detect.outputs.package_manager == 'yarn')
+      shell: bash
+      env:
+        PNPM_VERSION: ${{ inputs.pnpm-version }}
+      run: |
+        set -euo pipefail
+        corepack enable
+        if [[ -n "$PNPM_VERSION" ]]; then
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+        fi
+
+    - name: Set up Node.js
+      if: steps.detect.outputs.language == 'node'
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.cache == 'true' && steps.detect.outputs.node_cache || '' }}
+        cache-dependency-path: ${{ inputs.working-directory }}
+
+    - name: Set up Bun
+      if: steps.detect.outputs.language == 'node' && steps.detect.outputs.package_manager == 'bun'
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Set up Vim
+      if: steps.detect.outputs.language == 'vim'
+      uses: rhysd/action-setup-vim@v1
+      with:
+        version: ${{ inputs.vim-version }}
+
+    - name: Set up Rust
+      if: steps.detect.outputs.language == 'rust'
+      shell: bash
+      env:
+        RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+        rustup default "$RUST_TOOLCHAIN"
+        rustc --version
+
+    - name: Set up Java
+      if: steps.detect.outputs.language == 'java'
+      uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - name: Set up .NET
+      if: steps.detect.outputs.language == 'dotnet'
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Run the shared Pipeline engine
+      id: pipeline
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        MODE: ${{ inputs.mode }}
+        LANGUAGE: ${{ steps.detect.outputs.language }}
+        PROJECT_DIR: ${{ inputs.working-directory }}
+        INSTALL_COMMAND: ${{ inputs.install-command }}
+        LINT_COMMAND: ${{ inputs.lint-command }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        TEST_COMMAND: ${{ inputs.test-command }}
+        STAGES: ${{ inputs.stages }}
+        SKIP_STAGES: ${{ inputs.skip }}
+        PRESET_OPTIONS: ${{ inputs.options }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        BENCH_AGAINST: ${{ inputs.bench-against }}
+        BENCH_BASELINE: ${{ inputs.bench-baseline }}
+        BENCH_COMMAND: ${{ inputs.bench-command }}
+        BENCH_PARSER: ${{ inputs.bench-parser }}
+        BENCH_COUNT: ${{ inputs.bench-count }}
+        BENCH_THRESHOLD: ${{ inputs.bench-threshold }}
+        BENCH_REPORT_ONLY: ${{ inputs.bench-report-only }}
+        BENCH_UPDATE_BASELINE: ${{ inputs.bench-update-baseline }}
+      run: |
+        set -euo pipefail
+        case "$MODE" in
+          ci)
+            args=(ci --root "$PROJECT_DIR" --language "$LANGUAGE" --timeout "$TIMEOUT_SECONDS")
+            [[ -z "$INSTALL_COMMAND" ]] || args+=(--install-command "$INSTALL_COMMAND")
+            [[ -z "$LINT_COMMAND" ]] || args+=(--lint-command "$LINT_COMMAND")
+            [[ -z "$BUILD_COMMAND" ]] || args+=(--build-command "$BUILD_COMMAND")
+            [[ -z "$TEST_COMMAND" ]] || args+=(--test-command "$TEST_COMMAND")
+            [[ -z "$STAGES" ]] || args+=(--stages "$STAGES")
+            [[ -z "$SKIP_STAGES" ]] || args+=(--skip "$SKIP_STAGES")
+            ;;
+          bench)
+            args=(bench --root "$PROJECT_DIR" --language "$LANGUAGE")
+            [[ -z "$BENCH_AGAINST" ]] || args+=(--against "$BENCH_AGAINST")
+            [[ -z "$BENCH_BASELINE" ]] || args+=(--baseline "$BENCH_BASELINE")
+            [[ -z "$BENCH_COMMAND" ]] || args+=(--command "$BENCH_COMMAND")
+            [[ -z "$BENCH_PARSER" ]] || args+=(--parser "$BENCH_PARSER")
+            [[ "$BENCH_COUNT" == "0" ]] || args+=(--count "$BENCH_COUNT")
+            [[ -z "$BENCH_THRESHOLD" ]] || args+=(--threshold "$BENCH_THRESHOLD")
+            [[ "$BENCH_REPORT_ONLY" != "true" ]] || args+=(--report-only)
+            [[ "$BENCH_UPDATE_BASELINE" != "true" ]] || args+=(--update-baseline)
+            ;;
+          *)
+            echo "mode must be ci or bench, not $MODE" >&2
+            exit 2
+            ;;
+        esac
+        while IFS= read -r option; do
+          [[ -z "$option" ]] || args+=(--option "$option")
+        done <<< "$PRESET_OPTIONS"
+        python -m pipeline.providers.github "${args[@]}"

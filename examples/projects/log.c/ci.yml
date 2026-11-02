@@ -1,0 +1,55 @@
+# Copy to log.c/.github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  posix:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: linux-x86_64-gcc, os: ubuntu-24.04, cc: gcc }
+          - { id: linux-x86_64-clang, os: ubuntu-24.04, cc: clang }
+          - { id: linux-arm64-gcc, os: ubuntu-24.04-arm, cc: gcc }
+          - { id: macos-arm64-clang, os: macos-15, cc: clang }
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake ninja-build pkg-config python3
+      - uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main   # pin a tag or SHA
+        with:
+          language: c
+
+  sanitizers:
+    name: AddressSanitizer + UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+      - uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main
+        with:
+          language: c
+          # Ignore the Makefile `check` target and run CMake/ctest with sanitizers.
+          build-command: cmake --build build
+          test-command: ctest --test-dir build --output-on-failure
+          stages: configure,build,test
+          options: |
+            sanitize=address,undefined
+            generator=Ninja
+            build_type=Debug

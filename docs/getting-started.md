@@ -52,6 +52,16 @@ pipeline run check --json --result .pipeline-artifacts/pipeline-result.json
 
 The report records the provider, workspace, requested tasks, each task's status, exit code, and duration.
 
+## Run a language preset without a task file
+
+~~~sh
+pipeline detect
+pipeline ci --dry-run
+pipeline ci
+~~~
+
+`pipeline ci` detects Go, Rust, Java, .NET, Node.js, Python, C/C++ or Docker projects and runs install, lint, build and test. See [Language toolchains](toolchains.md).
+
 ## Run repository checks
 
 ~~~sh

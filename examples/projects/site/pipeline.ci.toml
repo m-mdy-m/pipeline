@@ -1,0 +1,6 @@
+[ci]
+language = "node"
+skip = ["test"]   # the site has no test script
+
+[ci.options]
+package_manager = "pnpm"

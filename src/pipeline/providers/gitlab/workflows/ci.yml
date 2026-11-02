@@ -1,22 +1,42 @@
 # Canonical reusable GitLab CI template for projects using m-mdy-m/pipeline.
+# GitLab only schedules jobs, selects images and stores artifacts here; every
+# task, language preset and report comes from the shared Python engine.
 # GitHub's equivalent reusable workflows live under .github/workflows/ because
 # GitHub only discovers workflow files from that reserved directory.
+#
+# Variables a project can set:
+#   PIPELINE_HELPER_REF   branch, tag or commit of m-mdy-m/pipeline (default main)
+#   PIPELINE_CI_LANGUAGE  go|node|rust|python|java|dotnet|c|docker|custom|auto.
+#                         When set, the pipeline:toolchain job runs the engine's
+#                         install/lint/build/test preset for that language.
+#   PIPELINE_CI_IMAGE     image with the language runtime (default python:3.12)
+#   PIPELINE_CI_ROOT      project directory (default .)
+#   PIPELINE_CI_ARGS      extra arguments for `pipeline ci`, e.g. "--skip lint"
 stages:
   - verify
 
 variables:
   PIPELINE_HELPER_REF: "main"
+  PIPELINE_CI_LANGUAGE: ""
+  PIPELINE_CI_IMAGE: "python:3.12"
+  PIPELINE_CI_ROOT: "."
+  PIPELINE_CI_ARGS: ""
 
 default:
   image: python:3.12
 
-pipeline:check:
-  stage: verify
+# Locates (or fetches) the engine sources and makes sure Python 3.11+ exists.
+.pipeline:bootstrap:
   script:
     - |
       set -eu
-      helper_source="$CI_PROJECT_DIR/src"
-      if [ ! -f "$helper_source/pipeline/providers/gitlab/adapter.py" ]; then
+      if ! command -v python3 >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y --no-install-recommends python3 ca-certificates
+        rm -rf /var/lib/apt/lists/*
+      fi
+      PIPELINE_SRC="$CI_PROJECT_DIR/src"
+      if [ ! -f "$PIPELINE_SRC/pipeline/providers/gitlab/adapter.py" ]; then
         if ! command -v git >/dev/null 2>&1; then
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
@@ -34,13 +54,43 @@ pipeline:check:
         git -C "$helper_dir" remote add origin https://github.com/m-mdy-m/pipeline.git
         git -C "$helper_dir" fetch --quiet --depth 1 origin "$PIPELINE_HELPER_REF"
         git -C "$helper_dir" checkout --quiet --detach FETCH_HEAD
-        helper_source="$helper_dir/src"
+        PIPELINE_SRC="$helper_dir/src"
       fi
+      export PIPELINE_SRC
       mkdir -p .pipeline-artifacts
-      PYTHONPATH="$helper_source" python -m pipeline.providers.gitlab run check --json \
+
+pipeline:check:
+  stage: verify
+  script:
+    - !reference [.pipeline:bootstrap, script]
+    - |
+      PYTHONPATH="$PIPELINE_SRC" python3 -m pipeline.providers.gitlab run check --json \
         --result .pipeline-artifacts/pipeline-result.json
   artifacts:
     when: always
     paths:
       - .pipeline-artifacts/
     expire_in: 7 days
+
+# Hidden base so other jobs (and matrices) can reuse it without `rules`.
+.pipeline:toolchain:
+  stage: verify
+  image: $PIPELINE_CI_IMAGE
+  script:
+    - !reference [.pipeline:bootstrap, script]
+    - |
+      # PIPELINE_CI_ARGS is intentionally word-split into extra engine arguments.
+      # shellcheck disable=SC2086
+      PYTHONPATH="$PIPELINE_SRC" python3 -m pipeline.providers.gitlab ci \
+        --root "$PIPELINE_CI_ROOT" --language "$PIPELINE_CI_LANGUAGE" \
+        --result "$CI_PROJECT_DIR/.pipeline-artifacts/ci-$CI_JOB_ID.json" $PIPELINE_CI_ARGS
+  artifacts:
+    when: always
+    paths:
+      - .pipeline-artifacts/
+    expire_in: 7 days
+
+pipeline:toolchain:
+  extends: .pipeline:toolchain
+  rules:
+    - if: $PIPELINE_CI_LANGUAGE

@@ -1,0 +1,7 @@
+# `make test` starts an interactive Vim, so CI only asserts that the commands exist after a clean load.
+# (-N is required: with -u NONE Vim starts in compatible mode and rejects line continuations.)
+[ci]
+language = "vim"
+
+[ci.commands]
+test = "vim -u NONE -N -es -c 'set rtp^=.' -c 'runtime plugin/ftx.vim' -c 'if !exists(\":FTX\") | cquit | endif' -c quit"

@@ -1,0 +1,188 @@
+name: Toolchain smoke
+
+# Proves that the composite actions and the shared engine really install,
+# lint, build and test a project in every supported language. The fixtures in
+# examples/toolchains/ are tiny but complete projects.
+on:
+  workflow_call:
+  schedule:
+    - cron: "41 3 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auto-detect:
+    name: toolchain-quality (${{ matrix.fixture }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { fixture: python, language: python }
+          - { fixture: node, language: node }
+          - { fixture: go, language: go }
+          - { fixture: rust, language: rust }
+          - { fixture: java-maven, language: java }
+          - { fixture: dotnet, language: dotnet }
+          - { fixture: c-make, language: c }
+          - { fixture: c-cmake, language: c }
+          - { fixture: docker, language: docker }
+          - { fixture: vim, language: vim }
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Detect, install, lint, build and test the fixture
+        id: quality
+        uses: ./.github/actions/toolchain-quality
+        with:
+          working-directory: examples/toolchains/${{ matrix.fixture }}
+
+      - name: Require the expected language and a successful run
+        env:
+          EXPECTED: ${{ matrix.language }}
+          DETECTED: ${{ steps.quality.outputs.language }}
+          SUCCEEDED: ${{ steps.quality.outputs.succeeded }}
+        run: |
+          set -euo pipefail
+          test "$DETECTED" = "$EXPECTED" || { echo "detected $DETECTED, expected $EXPECTED" >&2; exit 1; }
+          test "$SUCCEEDED" = "true"
+
+  node-action:
+    name: node-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/node-quality
+        with:
+          working-directory: examples/toolchains/node
+
+  go-action:
+    name: go-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/go-quality
+        with:
+          working-directory: examples/toolchains/go
+
+  rust-action:
+    name: rust-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-quality
+        with:
+          working-directory: examples/toolchains/rust
+
+  java-action:
+    name: java-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/java-quality
+        with:
+          working-directory: examples/toolchains/java-maven
+
+  dotnet-action:
+    name: dotnet-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/dotnet-quality
+        with:
+          working-directory: examples/toolchains/dotnet
+
+  python-action:
+    name: python-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python-quality
+        with:
+          working-directory: examples/toolchains/python
+          skip: ""
+
+  reusable-ci-preset:
+    name: reusable ci.yml with toolchain-preset (${{ matrix.fixture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [node, go, rust]
+    uses: ./.github/workflows/ci.yml
+    with:
+      language: ${{ matrix.fixture }}
+      toolchain-preset: true
+      working-directory: examples/toolchains/${{ matrix.fixture }}
+      pipeline-ref: ${{ github.sha }}
+
+  benchmark-go:
+    name: benchmark mode (go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the Go fixture's benchmarks
+        id: bench
+        uses: ./.github/actions/toolchain-quality
+        with:
+          mode: bench
+          language: go
+          working-directory: examples/toolchains/go
+          bench-count: "2"
+
+      - name: Require a result and no regressions
+        env:
+          REGRESSIONS: ${{ steps.bench.outputs.regressions }}
+        run: test "$REGRESSIONS" = "0"
+
+  negative-control:
+    name: a broken project must fail the action
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the action with a test command that exits non-zero
+        id: broken
+        continue-on-error: true
+        uses: ./.github/actions/toolchain-quality
+        with:
+          language: custom
+          working-directory: examples/toolchains/go
+          test-command: python -c "raise SystemExit(3)"
+
+      - name: Require that the broken run failed
+        env:
+          OUTCOME: ${{ steps.broken.outcome }}
+        run: |
+          set -euo pipefail
+          test "$OUTCOME" = "failure" || { echo "expected failure, got $OUTCOME" >&2; exit 1; }

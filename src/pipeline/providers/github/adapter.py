@@ -1,6 +1,6 @@
 """Translate GitHub Actions variables into the portable PIPELINE_* contract."""
 from __future__ import annotations
-import os,re,sys
+import json,os,re,sys,tempfile
 from pathlib import Path
 from typing import Mapping
 from ...core.provider import ProviderAdapter  # noqa: E402
@@ -47,23 +47,64 @@ class GitHubAdapter:
             if "\n" in value or "\r" in value:raise ValueError(f"Environment value for {key} contains newline")
             lines.append(f"{key}={value}")
         with target.open("a",encoding="utf-8",newline="\n") as stream:stream.write("\n".join(lines)+"\n")
+def render_step_summary(report:Mapping[str,object])->str:
+    """Markdown for $GITHUB_STEP_SUMMARY. Presentation only: the report comes from the core."""
+    icon={"succeeded":"✅","failed":"❌","skipped":"⏭️"}
+    title=report.get("language") or ",".join(report.get("requested_tasks",[])) or "pipeline"
+    lines=[f"### pipeline: {title} — {'passed' if report.get('succeeded') else 'failed'}","","| Task | Status | Exit | Seconds |","| --- | --- | --- | --- |"]
+    for t in report.get("tasks",[]):lines.append(f"| `{t['name']}` | {icon.get(t['status'],'')} {t['status']} | {t.get('return_code','')} | {t.get('duration_seconds',0):.2f} |")
+    return "\n".join(lines)+"\n"
+def render_annotations(report:Mapping[str,object])->list[str]:
+    out=[]
+    for t in report.get("tasks",[]):
+        if t.get("status")=="failed":
+            msg=str(t.get("error","failed")).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
+            out.append(f"::error title=pipeline task {t['name']} failed::{msg}")
+    return out
+def _run_core(adapter:GitHubAdapter,core_args:list[str])->int:
+    """Run a core command; when it produces a report, add the GitHub step summary and error annotations."""
+    os.environ.update(adapter.normalize_environment(os.environ))
+    if core_args and core_args[0]=="bench" and "--markdown" not in core_args:
+        handle=tempfile.NamedTemporaryFile(prefix="pipeline-bench-",suffix=".md",delete=False);handle.close()
+        try:
+            code=core_main([*core_args,"--markdown",handle.name]);summary=os.environ.get("GITHUB_STEP_SUMMARY","")
+            text=Path(handle.name).read_text(encoding="utf-8") if Path(handle.name).stat().st_size else ""
+            if text and summary:
+                with open(summary,"a",encoding="utf-8",newline="\n") as stream:stream.write(text)
+            return code
+        finally:Path(handle.name).unlink(missing_ok=True)
+    produces_report=bool(core_args) and core_args[0] in {"run","ci"} and "--dry-run" not in core_args
+    if not produces_report:return core_main(core_args)
+    args=list(core_args);temp=None
+    if "--result" not in args:
+        handle=tempfile.NamedTemporaryFile(prefix="pipeline-report-",suffix=".json",delete=False);handle.close();temp=handle.name;args+=["--result",temp]
+    try:
+        code=core_main(args);path=Path(args[args.index("--result")+1])
+        try:report=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,ValueError):return code
+        for line in render_annotations(report):print(line)
+        summary=os.environ.get("GITHUB_STEP_SUMMARY","")
+        if summary:
+            with open(summary,"a",encoding="utf-8",newline="\n") as stream:stream.write(render_step_summary(report))
+        return code
+    finally:
+        if temp:Path(temp).unlink(missing_ok=True)
 def main(argv:list[str]|None=None)->int:
     args=list(sys.argv[1:] if argv is None else argv)
     if not args:
-        print("Usage: python -m pipeline.providers.github bootstrap|run [pipeline args...]",file=sys.stderr);return 2
+        print("Usage: python -m pipeline.providers.github bootstrap|task|ci|bench|run [pipeline args...]",file=sys.stderr);return 2
     adapter=GitHubAdapter()
     if args[0]=="task":
         if len(args)<2:
             print("Usage: python -m pipeline.providers.github task TASK [TASK ...]",file=sys.stderr);return 2
-        os.environ.update(adapter.normalize_environment(os.environ))
-        return core_main(["run",*args[1:]])
+        return _run_core(adapter,["run",*args[1:]])
+    if args[0] in {"ci","bench"}:return _run_core(adapter,[args[0],*args[1:]])
     if args[0]=="run":
         if len(args)<2:
             print("Usage: python -m pipeline.providers.github run CORE_COMMAND [args...]",file=sys.stderr);return 2
-        os.environ.update(adapter.normalize_environment(os.environ))
-        return core_main(args[1:])
+        return _run_core(adapter,args[1:])
     if args[0]!="bootstrap":
-        print("Usage: python -m pipeline.providers.github bootstrap|task|run [args...]",file=sys.stderr);return 2
+        print("Usage: python -m pipeline.providers.github bootstrap|task|ci|bench|run [args...]",file=sys.stderr);return 2
     path=os.environ.get("GITHUB_ENV","")
     if not path:print("GITHUB_ENV is required for bootstrap mode",file=sys.stderr);return 2
     try:GitHubAdapter.write_environment_file(path,adapter.bootstrap_values(os.environ))

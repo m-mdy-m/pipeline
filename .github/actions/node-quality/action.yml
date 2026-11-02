@@ -1,0 +1,152 @@
+name: Pipeline Node.js quality
+description: Install Node.js, then run the Pipeline engine's node install, lint, build and test stages.
+
+inputs:
+  node-version:
+    description: Node.js version.
+    required: false
+    default: "22"
+  pnpm-version:
+    description: Optional pnpm version to activate through Corepack.
+    required: false
+    default: ""
+  package-manager:
+    description: npm, pnpm, yarn or bun. Empty detects it from the lockfile.
+    required: false
+    default: ""
+  cache:
+    description: Cache npm, pnpm or yarn dependencies when a lockfile exists (true or false).
+    required: false
+    default: "true"
+  bun-version:
+    description: Bun version used when the project uses bun.
+    required: false
+    default: latest
+  working-directory:
+    description: Project directory, relative to the workspace.
+    required: false
+    default: "."
+  install-command:
+    description: Replace the preset install command. Split like a shell line, not run by a shell.
+    required: false
+    default: ""
+  lint-command:
+    description: Replace the preset lint command.
+    required: false
+    default: ""
+  build-command:
+    description: Replace the preset build command.
+    required: false
+    default: ""
+  test-command:
+    description: Replace the preset test command.
+    required: false
+    default: ""
+  stages:
+    description: Comma separated subset of install, configure, lint, build, test. Empty runs every stage the preset defines.
+    required: false
+    default: ""
+  skip:
+    description: Comma separated stages to skip.
+    required: false
+    default: ""
+  options:
+    description: Newline separated KEY=VALUE preset options such as package_manager=pnpm.
+    required: false
+    default: ""
+  timeout-seconds:
+    description: Timeout applied to each stage.
+    required: false
+    default: "1800"
+  python-version:
+    description: Python used to run the Pipeline engine itself (3.11 or newer).
+    required: false
+    default: "3.12"
+
+outputs:
+  language:
+    description: Language the engine used.
+    value: ${{ steps.pipeline.outputs.language }}
+  package-manager:
+    description: Package manager chosen for Node.js projects, otherwise empty.
+    value: ${{ steps.pipeline.outputs.package_manager }}
+  succeeded:
+    description: "true when every stage passed."
+    value: ${{ steps.pipeline.outputs.succeeded }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python for the Pipeline engine
+      uses: actions/setup-python@v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Detect the package manager
+      id: detect
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        PROJECT_DIR: ${{ inputs.working-directory }}
+        CHOSEN: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+        python -m pipeline detect --root "$PROJECT_DIR" --json | CHOSEN="$CHOSEN" python -c 'import json,os,sys; d=json.load(sys.stdin); pm=os.environ["CHOSEN"] or d["package_manager"] or "npm"; cache=d["node_cache"] if pm==d["package_manager"] else ""; print("package_manager=%s" % pm); print("node_cache=%s" % cache)' >> "$GITHUB_OUTPUT"
+
+    - name: Activate Corepack package managers
+      if: steps.detect.outputs.package_manager == 'pnpm' || steps.detect.outputs.package_manager == 'yarn'
+      shell: bash
+      env:
+        PNPM_VERSION: ${{ inputs.pnpm-version }}
+      run: |
+        set -euo pipefail
+        corepack enable
+        if [[ -n "$PNPM_VERSION" ]]; then
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+        fi
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.cache == 'true' && steps.detect.outputs.node_cache || '' }}
+        cache-dependency-path: ${{ inputs.working-directory }}
+
+    - name: Set up Bun
+      if: steps.detect.outputs.package_manager == 'bun'
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Run the shared Pipeline engine
+      id: pipeline
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        LANGUAGE: node
+        PACKAGE_MANAGER: ${{ steps.detect.outputs.package_manager }}
+        PROJECT_DIR: ${{ inputs.working-directory }}
+        INSTALL_COMMAND: ${{ inputs.install-command }}
+        LINT_COMMAND: ${{ inputs.lint-command }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        TEST_COMMAND: ${{ inputs.test-command }}
+        STAGES: ${{ inputs.stages }}
+        SKIP_STAGES: ${{ inputs.skip }}
+        PRESET_OPTIONS: ${{ inputs.options }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+      run: |
+        set -euo pipefail
+        args=(ci --root "$PROJECT_DIR" --language "$LANGUAGE" --timeout "$TIMEOUT_SECONDS")
+        [[ -z "$INSTALL_COMMAND" ]] || args+=(--install-command "$INSTALL_COMMAND")
+        [[ -z "$LINT_COMMAND" ]] || args+=(--lint-command "$LINT_COMMAND")
+        [[ -z "$BUILD_COMMAND" ]] || args+=(--build-command "$BUILD_COMMAND")
+        [[ -z "$TEST_COMMAND" ]] || args+=(--test-command "$TEST_COMMAND")
+        [[ -z "$STAGES" ]] || args+=(--stages "$STAGES")
+        [[ -z "$SKIP_STAGES" ]] || args+=(--skip "$SKIP_STAGES")
+        while IFS= read -r option; do
+          [[ -z "$option" ]] || args+=(--option "$option")
+        done <<< "$PRESET_OPTIONS"
+        args+=(--option "package_manager=$PACKAGE_MANAGER")
+        python -m pipeline.providers.github "${args[@]}"

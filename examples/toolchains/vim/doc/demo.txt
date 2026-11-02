@@ -1,0 +1,6 @@
+*demo.txt*  Minimal plugin used to test the pipeline vim preset
+
+                                                                       *:Demo*
+:Demo    Echo a greeting.
+
+ vim:tw=78:ft=help:norl:

@@ -88,3 +88,36 @@ The workflow runs the shared benchmark module and uploads the reports. Keep `pip
 - Repeat noisy measurements more times.
 - Read the run logs, not just the average.
 - Do not treat a small timing difference as proof of an improvement.
+
+## Detect regressions with `pipeline bench`
+
+`python -m pipeline.benchmark` (above) times an arbitrary command. `pipeline bench` is the language-aware tool for catching a slowdown before it merges: it runs the project's real benchmarks, takes the median of repeated runs, and compares them with an earlier measurement.
+
+~~~sh
+# compare with another commit, measured in a temporary git worktree on this machine
+pipeline bench --against origin/main
+
+# compare with a committed baseline file, or create/refresh it
+pipeline bench --baseline benchmarks/baseline.json
+pipeline bench --baseline benchmarks/baseline.json --update-baseline
+~~~
+
+| Language | Default command | Parser |
+| --- | --- | --- |
+| `go` | `go test -run ^$ -bench . -benchmem -count N ./...` | `gobench` reads `BenchmarkX  N  V ns/op` lines |
+| `node` | `<pm> run bench` (when `package.json` has a `bench` script) | `time` (wall clock) |
+| `rust` | `cargo bench` | `time` |
+| anything else | pass `--command` (or `[ci.bench] command`) | `--parser gobench` or `time` |
+
+A benchmark regresses when it is more than `--threshold` percent slower (default 25; exactly on the threshold passes). Useful flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--report-only` | Print and summarise, but exit 0 even with regressions |
+| `--strict` | Fail (exit 2) when the baseline cannot be produced; otherwise a missing ref or baseline file only produces a warning |
+| `--result FILE`, `--markdown FILE` | Write the JSON report and the Markdown table |
+| `--count N` | Repetitions (`-count` for `gobench`, runs for `time`) |
+
+Exit codes: 0 no regression (or `--report-only`), 1 regression found, 2 the benchmark or baseline could not be produced. Comparing two commits on the same runner avoids most noise from different hardware; shared CI runners are still noisy, so start with a generous threshold or `--report-only`.
+
+Defaults can live in the repository under `[ci.bench]` (see [Language toolchains](toolchains.md#repository-owned-configuration-the-ci-table)). This repository benchmarks its own engine with `benchmarks/engine.py`.

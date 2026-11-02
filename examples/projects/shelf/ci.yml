@@ -1,0 +1,31 @@
+# Copy to shelf/.github/workflows/ci.yml. It replaces the hand-written clone of a pinned pipeline commit.
+name: Shelf CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shelf-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Pipeline and application quality checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install locked workspace dependencies
+        uses: m-mdy-m/pipeline/.github/actions/node-quality@main   # pin a tag or SHA
+        with:
+          node-version: "22"
+          pnpm-version: "9.15.4"
+          stages: install
+      - name: Run the Shelf task graph (project check, compile, pnpm run ci)
+        uses: m-mdy-m/pipeline/.github/actions/run-pipeline@main
+        with:
+          tasks: ci

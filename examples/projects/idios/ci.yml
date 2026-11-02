@@ -1,0 +1,45 @@
+# Copy to idios/.github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: m-mdy-m/pipeline/.github/actions/go-quality@main   # pin a tag or SHA
+        with:
+          skip: install,build
+
+  web:
+    name: Web client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: m-mdy-m/pipeline/.github/actions/node-quality@main
+        with:
+          working-directory: clients/web
+          node-version: "22"
+
+  tasks:
+    name: Repository task graph
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: m-mdy-m/pipeline/.github/actions/run-pipeline@main
+        with:
+          tasks: check

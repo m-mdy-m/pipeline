@@ -1,6 +1,10 @@
 name: GitHub Actions security analysis
 
 on:
+  push:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
   pull_request:
     paths:
       - ".github/workflows/**"
@@ -37,6 +41,16 @@ jobs:
             .github/workflows/python-compatibility.yml
             .github/workflows/scorecard.yml
             .github/actions/python-quality/action.yml
+            .github/actions/run-pipeline/action.yml
+            .github/actions/toolchain-quality/action.yml
+            .github/actions/node-quality/action.yml
+            .github/actions/go-quality/action.yml
+            .github/actions/rust-quality/action.yml
+            .github/actions/java-quality/action.yml
+            .github/actions/dotnet-quality/action.yml
+            .github/workflows/ci-main.yml
+            .github/workflows/toolchain-smoke.yml
+            .github/workflows/benchmark-regression.yml
           collect: all
           persona: regular
           min-severity: high

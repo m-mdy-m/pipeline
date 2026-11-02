@@ -1,0 +1,6 @@
+[ci]
+language = "node"
+skip = ["test"]   # trk has no test script yet; remove this line when one is added
+
+[ci.options]
+package_manager = "pnpm"
