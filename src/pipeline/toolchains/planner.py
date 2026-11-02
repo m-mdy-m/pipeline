@@ -1,6 +1,7 @@
 """Turn a project directory (plus optional overrides) into a runnable task graph."""
 from __future__ import annotations
 
+import os
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,7 +49,9 @@ def detect_toolchains(root: str | Path) -> list[str]:
 
 def _split(stage: str, text: str) -> tuple[str, ...]:
     try:
-        parts = shlex.split(text)
+        parts = shlex.split(text, posix=os.name != "nt")
+        if os.name == "nt":
+            parts = [part[1:-1] if len(part) >= 2 and part[0] == part[-1] and part[0] in "\'\\"" else part for part in parts]
     except ValueError as exc:
         raise CIPlanError(f"--{stage}-command is not valid shell-style quoting: {exc}") from exc
     if not parts:
