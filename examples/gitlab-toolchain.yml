@@ -1,0 +1,10 @@
+# Copy this file to .gitlab-ci.yml in your project.
+include:
+  - remote: https://raw.githubusercontent.com/m-mdy-m/pipeline/main/src/pipeline/providers/gitlab/workflows/ci.yml
+
+variables:
+  PIPELINE_HELPER_REF: "main"        # use a reviewed tag or full commit SHA
+  PIPELINE_CI_LANGUAGE: node         # go, node, rust, java, dotnet, python, c, docker, auto
+  PIPELINE_CI_IMAGE: node:22         # any image that contains the runtime
+  # PIPELINE_CI_ROOT: services/web
+  # PIPELINE_CI_ARGS: "--skip lint"

@@ -1,46 +1,116 @@
 name: Repository CI
 
+# Runs on every push to every branch, on pull requests and in the merge queue.
+# This file only schedules jobs; every check executes code from src/pipeline/
+# or the workflow contract tests under tests/.
 on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
   pull_request:
   merge_group:
     types: [checks_requested]
-  push:
-    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: repository-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
 jobs:
+  python:
+    name: Unit tests
+    uses: ./.github/workflows/python-compatibility.yml
+
+  toolchains:
+    name: Language toolchains
+    uses: ./.github/workflows/toolchain-smoke.yml
+
+  contracts:
+    name: Workflow contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install YAML tooling
+        run: python -m pip install --disable-pip-version-check "PyYAML==6.0.3"
+
+      - name: Run workflow and action contract tests (YAML parsing required)
+        env:
+          PIPELINE_REQUIRE_YAML: "1"
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -p "test_workflow_contracts.py" -v
+
+  repository:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check required files and workflow inventory
+        run: make docs-check workflow-inventory
+
+      - name: Run the repository task graph through the shared engine
+        uses: ./.github/actions/run-pipeline
+        with:
+          tasks: check
+          report-name: pipeline-task-report
+
+      - name: Check whitespace
+        run: git diff --check
+
   reusable-task-graph:
-    name: Verify reusable pipeline.toml execution
+    name: Reusable workflow runs a caller pipeline.toml
     uses: ./.github/workflows/ci.yml
     with:
       language: python
       python-version: "3.12"
       pipeline-task: check
-      pipeline-ref: main
+      pipeline-ref: ${{ github.sha }}
+
+  yaml-lint:
+    name: YAML lint
+    uses: ./.github/workflows/yamllint.yml
+
+  spelling:
+    name: Spelling
+    uses: ./.github/workflows/typos.yml
 
   docs:
+    name: Documentation and workflow syntax
     uses: ./.github/workflows/docs-check.yml
-  repository:
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [python, toolchains, contracts, repository, reusable-task-graph, yaml-lint, spelling, docs]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7.1.0
-        with:
-          python-version: "3.12"
-      - name: Check required files and workflow inventory
-        run: make docs-check workflow-inventory
-      - name: Execute the shared task graph through the GitHub adapter
-        run: PYTHONPATH=src python -m pipeline.providers.github task check --json --result .pipeline-artifacts/pipeline-result.json
-      - name: Upload the provider-neutral task report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: pipeline-task-report-${{ github.run_id }}
-          path: .pipeline-artifacts/
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Check whitespace
-        run: git diff --check
+      - name: Fail unless every required job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            if [[ "$result" != "success" ]]; then
+              echo "A required CI job finished with: $result" >&2
+              exit 1
+            fi
+          done

@@ -1,0 +1,5 @@
+[ci]
+language = "node"
+
+[ci.options]
+package_manager = "bun"

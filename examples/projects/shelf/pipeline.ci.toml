@@ -1,0 +1,7 @@
+# shelf: pnpm workspace. The preset runs format:check, lint and typecheck as the lint stage,
+# then build and test, using the scripts that already exist in package.json.
+[ci]
+language = "node"
+
+[ci.options]
+package_manager = "pnpm"

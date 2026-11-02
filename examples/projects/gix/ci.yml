@@ -1,0 +1,35 @@
+# Copy to gix/.github/workflows/build.yml
+name: Build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: m-mdy-m/pipeline/.github/actions/go-quality@main   # pin a tag or SHA
+        with:
+          go-version: "1.25"
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: m-mdy-m/pipeline/.github/actions/go-quality@main
+        with:
+          go-version: "1.25"
+          stages: build
+      - name: Smoke test
+        run: go run ./cmd/gix --help

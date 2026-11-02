@@ -1,25 +1,7 @@
 name: Python compatibility
 
 on:
-  pull_request:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - ".github/actions/python-quality/**"
-      - ".github/workflows/python-compatibility.yml"
-      - "pyproject.toml"
-      - "pipeline.toml"
-      - "Makefile"
-  push:
-    branches: [main, develop]
-    paths:
-      - "src/**"
-      - "tests/**"
-      - ".github/actions/python-quality/**"
-      - ".github/workflows/python-compatibility.yml"
-      - "pyproject.toml"
-      - "pipeline.toml"
-      - "Makefile"
+  workflow_call:
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
@@ -29,13 +11,24 @@ permissions:
 
 jobs:
   python:
-    name: Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    # macOS and Windows runs are informative until they have a clean history.
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        experimental: [false]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+            experimental: true
+          - os: windows-latest
+            python-version: "3.12"
+            experimental: true
     steps:
       - name: Check out source
         uses: actions/checkout@v7.0.1

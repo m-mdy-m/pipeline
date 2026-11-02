@@ -1,0 +1,8 @@
+bin/
+obj/
+target/
+build/
+node_modules/
+/c-make/demo
+*.egg-info/
+__pycache__/

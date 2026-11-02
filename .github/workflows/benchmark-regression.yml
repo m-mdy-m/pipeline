@@ -1,0 +1,69 @@
+name: Benchmark regression
+
+# Benchmarks the pushed commit and a base ref on the same runner, then reports
+# the difference in the job summary. The measuring and comparing is done by
+# `pipeline bench` (src/pipeline/benchmark/); the benchmark itself is defined in
+# the [ci.bench] table of pipeline.toml.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      against:
+        description: "Git ref to compare with"
+        required: false
+        default: origin/main
+        type: string
+      fail-on-regression:
+        description: "Fail the job when a benchmark regresses"
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      against:
+        description: "Git ref to compare with"
+        required: false
+        default: origin/main
+        type: string
+      fail-on-regression:
+        description: "Fail the job when a benchmark regresses"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Compare with the base ref
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source with history
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Choose the comparison ref
+        id: ref
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REQUESTED: ${{ inputs.against }}
+        run: |
+          set -euo pipefail
+          echo "against=${BASE_SHA:-${REQUESTED:-origin/main}}" >> "$GITHUB_OUTPUT"
+
+      - name: Benchmark this commit and the base ref
+        id: bench
+        uses: ./.github/actions/toolchain-quality
+        with:
+          mode: bench
+          language: python
+          bench-against: ${{ steps.ref.outputs.against }}
+          bench-report-only: ${{ inputs.fail-on-regression != true }}

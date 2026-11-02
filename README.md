@@ -1,6 +1,6 @@
 # pipeline
 
-[![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg)](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml)
+[![CI](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml/badge.svg?event=push)](https://github.com/m-mdy-m/pipeline/actions/workflows/ci-main.yml)
 [![License](https://img.shields.io/github/license/m-mdy-m/pipeline)](LICENSE)
 
 **pipeline** is a small task runner and reusable CI workflow toolkit. Define build, test, and release tasks once in `pipeline.toml`, then run the same task graph locally, in GitHub Actions, or in GitLab CI.
@@ -65,6 +65,27 @@ pipeline-github task check --json
 pipeline-gitlab run check --json
 ~~~
 
+### Run a language preset (no `pipeline.toml` needed)
+
+~~~sh
+pipeline detect
+pipeline ci                       # install → lint → build → test for the detected language
+pipeline ci --language go --skip lint
+~~~
+
+Supported out of the box: Go, Rust, Java (Maven/Gradle), .NET, Node.js (npm/pnpm/yarn/bun), Python, C/C++ (CMake/Make) and Docker. The same command runs in every provider; see [Language toolchains](docs/toolchains.md).
+
+### Use the composite actions on GitHub
+
+~~~yaml
+- uses: actions/checkout@v7
+- uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main   # pin a tag or SHA in production
+  with:
+    language: auto            # or go, node, rust, java, dotnet, python, c, docker
+~~~
+
+Language-specific actions (`node-quality`, `go-quality`, `rust-quality`, `java-quality`, `dotnet-quality`, `python-quality`) and `run-pipeline` for your own `pipeline.toml` are described in [Language toolchains](docs/toolchains.md#github-actions). They only install the runtime and call the engine; GitHub is the provider, not a second implementation.
+
 ### Call a reusable GitHub workflow
 
 The workflow files can be called directly from another repository. For example, this invokes the reusable CI workflow in this repository:
@@ -92,11 +113,11 @@ jobs:
 
 The referenced file must declare `on: workflow_call`, and the call must appear at the job level. `@main` is convenient while evaluating changes. For production projects, pin a reviewed release tag or full commit SHA so the workflow does not change unexpectedly.
 
-Reusable workflows are also available for documentation checks, benchmarks, compiled releases, source releases, Docker, npm, Python packages, security scans, and GitHub Pages. Publishing/deployment workflows expose `dry-run` inputs where a non-publishing test is useful. See [Providers and reusable workflows](docs/providers.md) and [Releases](docs/releases.md).
+Set `toolchain-preset: true` to use the engine's language preset instead of passing commands. Reusable workflows are also available for documentation checks, benchmarks, compiled releases, source releases, Docker, npm, Python packages, security scans, and GitHub Pages. Publishing/deployment workflows expose `dry-run` inputs where a non-publishing test is useful. See [Providers and reusable workflows](docs/providers.md) and [Releases](docs/releases.md).
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md), then read [Getting started](docs/getting-started.md), [Task configuration](docs/configuration.md), [Design](docs/design.md), [Providers](docs/providers.md), [Benchmarks](docs/benchmarking.md), [Releases](docs/releases.md), and [Development](docs/development.md).
+Start with the [documentation index](docs/index.md), then read [Getting started](docs/getting-started.md), [Task configuration](docs/configuration.md), [Language toolchains](docs/toolchains.md), [Design](docs/design.md), [Providers](docs/providers.md), [Benchmarks](docs/benchmarking.md), [Releases](docs/releases.md), and [Development](docs/development.md).
 
 ## Requirements and license
 

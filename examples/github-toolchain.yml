@@ -1,0 +1,28 @@
+# Copy this file to .github/workflows/ci.yml in your project.
+# It runs on every push and pull request. The action installs the runtime and
+# calls the pipeline engine, which decides what install/lint/build/test mean.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Replace @main with a reviewed release tag or full commit SHA.
+      - uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main
+        with:
+          language: auto                 # or go, node, rust, java, dotnet, python, c, docker
+          # working-directory: services/api
+          # test-command: go test -race ./...
+          # skip: lint

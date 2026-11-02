@@ -7,7 +7,8 @@ from typing import Any
 from .errors import PipelineConfigError
 from .models import TaskDefinition
 from ..utils.paths import resolve_within
-_ROOT={"schema_version","project","defaults","tasks"}
+from .ci_settings import parse_ci_table
+_ROOT={"schema_version","project","defaults","tasks","ci"}
 _PROJECT={"name","description"}
 _DEFAULTS={"timeout_seconds","fail_fast"}
 _TASK={"command","description","working_directory","depends_on","env","timeout_seconds"}
@@ -36,7 +37,9 @@ class PipelineConfig:
         project,defaults,data=raw.get("project",{}),raw.get("defaults",{}),raw.get("tasks")
         if not isinstance(project,dict) or set(project)-_PROJECT: raise PipelineConfigError("project may contain only name and description")
         if not isinstance(defaults,dict) or set(defaults)-_DEFAULTS: raise PipelineConfigError("defaults may contain only timeout_seconds and fail_fast")
-        if not isinstance(data,dict) or not data: raise PipelineConfigError("tasks must be a non-empty table")
+        if "ci" in raw: parse_ci_table(raw["ci"])
+        if "ci" in raw and data is None: data={}
+        if not isinstance(data,dict) or (not data and "ci" not in raw): raise PipelineConfigError("tasks must be a non-empty table")
         dt=defaults.get("timeout_seconds",300); ff=defaults.get("fail_fast",True)
         if type(dt) is not int or dt<1: raise PipelineConfigError("timeout_seconds must be positive")
         if type(ff) is not bool: raise PipelineConfigError("fail_fast must be boolean")

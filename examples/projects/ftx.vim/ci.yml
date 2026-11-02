@@ -1,0 +1,27 @@
+# Copy to ftx.vim/.github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vim:
+    name: Vim ${{ matrix.version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        version: [stable, nightly]
+    steps:
+      - uses: actions/checkout@v7
+      # Checks +job/+timers, :helptags and loads the plugin; the commands live in the engine and pipeline.toml.
+      - uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main   # pin a tag or SHA
+        with:
+          language: vim
+          vim-version: ${{ matrix.version }}

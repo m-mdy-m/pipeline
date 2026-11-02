@@ -19,6 +19,7 @@ GitHub Actions and GitLab CI do not need their own copy of that task logic. A sm
 | Run pipeline for the first time | [Getting started](getting-started.md) |
 | Write or change `pipeline.toml` | [Task configuration](configuration.md) |
 | Use pipeline locally, on GitHub, or on GitLab | [Providers](providers.md) |
+| Run install, lint, build and test for Go, Node.js, Rust, Java, .NET, Python, C/C++ or Docker | [Language toolchains](toolchains.md) |
 | Measure a command several times | [Benchmarks](benchmarking.md) |
 | Build or publish a release | [Releases](releases.md) |
 | Understand the design | [How it fits together](design.md) |

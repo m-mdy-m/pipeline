@@ -1,0 +1,103 @@
+name: Pipeline Java (Maven or Gradle) quality
+description: Install Java (Maven or Gradle), then run the Pipeline engine's java install, lint, build and test stages.
+
+inputs:
+  java-version:
+    description: Java version.
+    required: false
+    default: "21"
+  working-directory:
+    description: Project directory, relative to the workspace.
+    required: false
+    default: "."
+  install-command:
+    description: Replace the preset install command. Split like a shell line, not run by a shell.
+    required: false
+    default: ""
+  lint-command:
+    description: Replace the preset lint command.
+    required: false
+    default: ""
+  build-command:
+    description: Replace the preset build command.
+    required: false
+    default: ""
+  test-command:
+    description: Replace the preset test command.
+    required: false
+    default: ""
+  stages:
+    description: Comma separated subset of install, configure, lint, build, test. Empty runs every stage the preset defines.
+    required: false
+    default: ""
+  skip:
+    description: Comma separated stages to skip.
+    required: false
+    default: ""
+  options:
+    description: Newline separated KEY=VALUE preset options such as package_manager=pnpm.
+    required: false
+    default: ""
+  timeout-seconds:
+    description: Timeout applied to each stage.
+    required: false
+    default: "1800"
+  python-version:
+    description: Python used to run the Pipeline engine itself (3.11 or newer).
+    required: false
+    default: "3.12"
+
+outputs:
+  language:
+    description: Language the engine used.
+    value: ${{ steps.pipeline.outputs.language }}
+  package-manager:
+    description: Package manager chosen for Node.js projects, otherwise empty.
+    value: ${{ steps.pipeline.outputs.package_manager }}
+  succeeded:
+    description: "true when every stage passed."
+    value: ${{ steps.pipeline.outputs.succeeded }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - name: Set up Python for the Pipeline engine
+      uses: actions/setup-python@v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run the shared Pipeline engine
+      id: pipeline
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        LANGUAGE: java
+        PROJECT_DIR: ${{ inputs.working-directory }}
+        INSTALL_COMMAND: ${{ inputs.install-command }}
+        LINT_COMMAND: ${{ inputs.lint-command }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        TEST_COMMAND: ${{ inputs.test-command }}
+        STAGES: ${{ inputs.stages }}
+        SKIP_STAGES: ${{ inputs.skip }}
+        PRESET_OPTIONS: ${{ inputs.options }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+      run: |
+        set -euo pipefail
+        args=(ci --root "$PROJECT_DIR" --language "$LANGUAGE" --timeout "$TIMEOUT_SECONDS")
+        [[ -z "$INSTALL_COMMAND" ]] || args+=(--install-command "$INSTALL_COMMAND")
+        [[ -z "$LINT_COMMAND" ]] || args+=(--lint-command "$LINT_COMMAND")
+        [[ -z "$BUILD_COMMAND" ]] || args+=(--build-command "$BUILD_COMMAND")
+        [[ -z "$TEST_COMMAND" ]] || args+=(--test-command "$TEST_COMMAND")
+        [[ -z "$STAGES" ]] || args+=(--stages "$STAGES")
+        [[ -z "$SKIP_STAGES" ]] || args+=(--skip "$SKIP_STAGES")
+        while IFS= read -r option; do
+          [[ -z "$option" ]] || args+=(--option "$option")
+        done <<< "$PRESET_OPTIONS"
+        python -m pipeline.providers.github "${args[@]}"

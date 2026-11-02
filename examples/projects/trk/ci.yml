@@ -1,0 +1,20 @@
+# Copy to trk/.github/workflows/ci.yml (trk has no CI for pull requests yet, only release.yml).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # format:check, typecheck, build; add a test script to package.json to enable the test stage.
+      - uses: m-mdy-m/pipeline/.github/actions/node-quality@main   # pin a tag or SHA
+        with:
+          node-version: "22"
+          skip: test

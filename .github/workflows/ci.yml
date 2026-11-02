@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       language:
-        description: "Runtime/toolchain: go, node, rust, python, java, dotnet, c, or custom"
+        description: "Runtime/toolchain: go, node, rust, python, java, dotnet, c, docker, or custom"
         required: true
         type: string
       build-command:
@@ -57,6 +57,21 @@ on:
         required: false
         type: string
         default: "8.0.x"
+      toolchain-preset:
+        description: "Run the engine's install/lint/build/test preset for the language instead of build/test/lint commands"
+        required: false
+        type: boolean
+        default: false
+      stages:
+        description: "Preset mode: comma separated subset of install,configure,lint,build,test"
+        required: false
+        type: string
+        default: ""
+      skip-stages:
+        description: "Preset mode: comma separated stages to skip"
+        required: false
+        type: string
+        default: ""
       pipeline-task:
         description: "Run a task from the caller's pipeline.toml instead of build/test/lint commands"
         required: false
@@ -80,12 +95,45 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Validate reusable workflow inputs
+        env:
+          LANGUAGE: ${{ inputs.language }}
+          BUILD_COMMAND: ${{ inputs.build-command }}
+          TEST_COMMAND: ${{ inputs.test-command }}
+          PIPELINE_TASK: ${{ inputs.pipeline-task }}
+          TOOLCHAIN_PRESET: ${{ inputs.toolchain-preset }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$LANGUAGE" in
+            go|node|rust|python|java|dotnet|c|docker|custom) ;;
+            *) echo "Unsupported language: $LANGUAGE" >&2; exit 2 ;;
+          esac
+
+          if [ -n "$PIPELINE_TASK" ] && [ "$TOOLCHAIN_PRESET" = "true" ]; then
+            echo "Use either pipeline-task or toolchain-preset, not both" >&2
+            exit 2
+          fi
+
+          if [ "$TOOLCHAIN_PRESET" = "true" ]; then
+            :
+          elif [ -z "$PIPELINE_TASK" ]; then
+            test -n "$BUILD_COMMAND" || { echo "build-command must not be empty" >&2; exit 1; }
+            test -n "$TEST_COMMAND" || { echo "test-command must not be empty" >&2; exit 1; }
+          else
+            [[ "$PIPELINE_TASK" =~ ^[A-Za-z0-9_-]+$ ]] || {
+              echo "pipeline-task must be a simple task name" >&2
+              exit 2
+            }
+          fi
+
       - name: Set up Go
         if: inputs.language == 'go'
         uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
       - name: Set up Node.js
         if: inputs.language == 'node' || inputs.setup-node
@@ -106,9 +154,14 @@ jobs:
 
       - name: Set up Rust
         if: inputs.language == 'rust'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ inputs.rust-toolchain }}
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
 
       - name: Set up Java
         if: inputs.language == 'java'
@@ -123,14 +176,12 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: Set up Python
-        if: inputs.language == 'python' || inputs.pipeline-task != ''
+      - name: Set up Python (project runtime and engine)
         uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
 
-      - name: Check out the shared pipeline task engine
-        if: inputs.pipeline-task != ''
+      - name: Check out the shared pipeline engine
         uses: actions/checkout@v7
         with:
           repository: m-mdy-m/pipeline
@@ -139,44 +190,14 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Install Node dependencies
-        if: inputs.language == 'node'
-        working-directory: ${{ inputs.working-directory }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f package-lock.json ]; then npm ci
-          elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile
-          elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile
-          fi
-
-      - name: Install Python dependencies
-        if: inputs.language == 'python' && hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
-        run: python -m pip install -r requirements.txt
-
-      - name: Validate reusable workflow inputs
+      - name: Install dependencies through the shared engine
+        if: ${{ !inputs.toolchain-preset && (inputs.language == 'node' || (inputs.language == 'python' && hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != '')) }}
+        working-directory: ${{ github.workspace }}
         env:
+          PYTHONPATH: ${{ github.workspace }}/.pipeline/src
           LANGUAGE: ${{ inputs.language }}
-          BUILD_COMMAND: ${{ inputs.build-command }}
-          TEST_COMMAND: ${{ inputs.test-command }}
-          PIPELINE_TASK: ${{ inputs.pipeline-task }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$LANGUAGE" in
-            go|node|rust|python|java|dotnet|c|custom) ;;
-            *) echo "Unsupported language: $LANGUAGE" >&2; exit 2 ;;
-          esac
-
-          if [ -z "$PIPELINE_TASK" ]; then
-            test -n "$BUILD_COMMAND" || { echo "build-command must not be empty" >&2; exit 1; }
-            test -n "$TEST_COMMAND" || { echo "test-command must not be empty" >&2; exit 1; }
-          else
-            [[ "$PIPELINE_TASK" =~ ^[A-Za-z0-9_-]+$ ]] || {
-              echo "pipeline-task must be a simple task name" >&2
-              exit 2
-            }
-          fi
+          PROJECT_DIR: ${{ inputs.working-directory }}
+        run: python -m pipeline.providers.github ci --root "$PROJECT_DIR" --language "$LANGUAGE" --stages install
 
       - name: Run the caller's pipeline.toml task
         if: inputs.pipeline-task != ''
@@ -190,14 +211,36 @@ jobs:
           --config "$GITHUB_WORKSPACE/pipeline.toml"
           --json
 
+      - name: Run the language preset through the shared engine
+        if: inputs.toolchain-preset
+        working-directory: ${{ github.workspace }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.pipeline/src
+          LANGUAGE: ${{ inputs.language }}
+          PROJECT_DIR: ${{ inputs.working-directory }}
+          STAGES: ${{ inputs.stages }}
+          SKIP_STAGES: ${{ inputs.skip-stages }}
+        run: |
+          set -euo pipefail
+          args=(ci --root "$PROJECT_DIR" --language "$LANGUAGE")
+          [[ -z "$STAGES" ]] || args+=(--stages "$STAGES")
+          [[ -z "$SKIP_STAGES" ]] || args+=(--skip "$SKIP_STAGES")
+          python -m pipeline.providers.github "${args[@]}"
+
       - name: Build
-        if: inputs.pipeline-task == ''
-        run: ${{ inputs.build-command }}
+        if: inputs.pipeline-task == '' && !inputs.toolchain-preset
+        env:
+          COMMAND: ${{ inputs.build-command }}
+        run: bash -e -o pipefail -c "$COMMAND"
 
       - name: Test
-        if: inputs.pipeline-task == ''
-        run: ${{ inputs.test-command }}
+        if: inputs.pipeline-task == '' && !inputs.toolchain-preset
+        env:
+          COMMAND: ${{ inputs.test-command }}
+        run: bash -e -o pipefail -c "$COMMAND"
 
       - name: Lint
-        if: inputs.pipeline-task == '' && inputs.lint-command != ''
-        run: ${{ inputs.lint-command }}
+        if: inputs.pipeline-task == '' && !inputs.toolchain-preset && inputs.lint-command != ''
+        env:
+          COMMAND: ${{ inputs.lint-command }}
+        run: bash -e -o pipefail -c "$COMMAND"

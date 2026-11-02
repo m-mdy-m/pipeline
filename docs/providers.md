@@ -76,6 +76,8 @@ include:
   - remote: https://raw.githubusercontent.com/m-mdy-m/pipeline/main/src/pipeline/providers/gitlab/workflows/ci.yml
 ~~~
 
+To run a language preset instead of `pipeline.toml`, set `PIPELINE_CI_LANGUAGE`, `PIPELINE_CI_IMAGE` and optionally `PIPELINE_CI_ROOT` / `PIPELINE_CI_ARGS`; see [Language toolchains](toolchains.md#gitlab-ci). The hidden job `.pipeline:toolchain` can be reused with `parallel: matrix`.
+
 The template uses the local `src/pipeline` checkout when the current project
 is the pipeline repository. For downstream projects it checks out the shared
 helper repository at `PIPELINE_HELPER_REF` (default: `main`), then runs the
@@ -151,18 +153,21 @@ Java.
 
 | Workflow | Purpose |
 | --- | --- |
-| `ci.yml` | Build, test, and optional lint for Go, Node.js, Rust, Python, Java, .NET, C, or custom projects. |
+| `ci.yml` | Build, test, and optional lint for Go, Node.js, Rust, Python, Java, .NET, C, Docker, or custom projects. Runs your commands, a `pipeline.toml` task, or the engine's language preset (`toolchain-preset: true`). |
+| `ci-main.yml` | This repository's push gate: runs on every push to every branch, every pull request and the merge queue, and ends in one `gate` job suitable as the single required check. |
+| `toolchain-smoke.yml` | Runs every composite action and the reusable `ci.yml` presets against the fixture projects in `examples/toolchains/`, plus a negative control that must fail. |
 | `docs-check.yml` | Markdown lint and GitHub Actions syntax validation. |
 | `security-check.yml` | Gitleaks scan of a selected project directory. |
 | `dependency-review.yml` | Review dependency changes in pull requests and block high-severity vulnerable updates. |
 | `codeql.yml` | Scheduled and change-triggered CodeQL analysis of the Python source tree. |
 | `zizmor.yml` | Static security analysis of GitHub Actions workflows and local composite actions. |
-| `yamllint.yml` | YAML syntax/style checks across GitHub and GitLab provider files. |
+| `yamllint.yml` | YAML syntax/style checks across GitHub and GitLab provider files and the examples. |
 | `typos.yml` | Spelling checks for source, documentation, and workflow files. |
-| `python-compatibility.yml` | Compiles source and runs the complete unit suite on Python 3.11, 3.12, and 3.13 through a shared composite action. |
+| `python-compatibility.yml` | Compiles source and runs the complete unit suite on Python 3.11, 3.12, and 3.13 (plus non-blocking macOS and Windows runs) through the `python-quality` composite action. |
 | `pr-title.yml` | Validates pull request titles against Conventional Commits. |
 | `scorecard.yml` | Runs scheduled OSSF Scorecard analysis and stores its SARIF report as a workflow artifact. |
 | `benchmark.yml` | Repeated command timing and result artifact upload. |
+| `benchmark-regression.yml` | Runs `pipeline bench --against <base>` on pull requests; writes a Markdown table to the job summary. Report-only unless `fail-on-regression` is set. |
 | `release.yml` | Matrix build/test, checksum assembly, and GitHub Release publishing. |
 | `source-release.yml` | Validated source ZIP from the exact tagged Git snapshot, with secret scanning. |
 | `docker-publish.yml` | Multi-platform Docker image build and optional push. |
@@ -191,6 +196,43 @@ setup and test steps are exercised by CI rather than existing as unused YAML.
 
 The dependency-review, CodeQL, zizmor, yamllint, and typos workflows are repository automation rather than reusable `workflow_call` endpoints. Dependency review and CodeQL use GitHub security services; zizmor audits GitHub-specific workflow/action configuration; yamllint deliberately covers both `.github/` and the canonical GitLab YAML entry points. They do not move task execution or release rules out of `src/pipeline/`. GitLab consumers can keep invoking the same provider-neutral Python commands from their own CI jobs. It is a regular workflow for this repository, not a `workflow_call` endpoint for consumers.
 
+### Language presets in the reusable workflow
+
+Set `toolchain-preset: true` to let the engine run install, lint, build and test for the language instead of passing commands. The workflow only provisions the runtime and then calls `python -m pipeline.providers.github ci`:
+
+~~~yaml
+jobs:
+  api:
+    uses: m-mdy-m/pipeline/.github/workflows/ci.yml@main
+    with:
+      language: go
+      toolchain-preset: true
+      working-directory: api
+      skip-stages: lint
+~~~
+
+`toolchain-preset` cannot be combined with `pipeline-task`. Commands passed as `build-command`, `test-command` and `lint-command` are only used when neither `toolchain-preset` nor `pipeline-task` is set (the legacy mode); they run as `bash -e -o pipefail -c "$COMMAND"` through environment variables (never interpolated into the script). For per-stage overrides use the composite actions below, which accept `install-command`, `lint-command`, `build-command` and `test-command`.
+
+The workflow always checks out `m-mdy-m/pipeline` at `pipeline-ref` into `.pipeline/` because dependency installation for Node.js and Python (`requirements.txt`) now goes through the engine too.
+
+### Composite actions
+
+Composite actions live in `.github/actions/` and can be used from another repository as `m-mdy-m/pipeline/.github/actions/<name>@<ref>`. They install a runtime, then call the same engine; they contain no build or test commands. The complete input/output list and examples are in [Language toolchains](toolchains.md#github-actions).
+
+| Action | Purpose |
+| --- | --- |
+| `toolchain-quality` | Any language, including auto-detection |
+| `node-quality`, `go-quality`, `rust-quality`, `java-quality`, `dotnet-quality` | Language-specific runtime setup plus the engine's stages |
+| `python-quality` | Python setup, byte-compile and the unit suite |
+| `run-pipeline` | Run named tasks from `pipeline.toml` and upload the JSON report |
+| `python-setup`, `release-assets` | Helpers used by release workflows |
+
+When the GitHub adapter runs `ci`, `run` or `task`, it also writes a Markdown table to the job summary and `::error` annotations for failed tasks. These GitHub-only presentation features live in `src/pipeline/providers/github/adapter.py`; the core produces the report.
+
+### What runs on every push
+
+`ci-main.yml` runs unit tests (Python 3.11–3.13), workflow and action contract tests, repository checks, the reusable-workflow smoke test for `pipeline.toml`, YAML lint, spelling, documentation lint, and the language toolchain smoke tests. The `gate` job fails unless all of them succeed. Path-filtered workflows (`reusable-smoke.yml`, `zizmor.yml`) additionally run on every branch when workflow, action or source files change.
+
 ### Dry-run behavior
 
 Use `dry-run: true` for `release.yml`, `source-release.yml`, `docker-publish.yml`, `npm-publish.yml`, `python-publish.yml`, or `pages.yml` to validate a build without making the corresponding release, registry publish, Docker push, or Pages deployment. The smoke workflow calls these reusable workflows with dry-run enabled. A dry run still executes the meaningful build and validation steps and can upload temporary workflow artifacts.
@@ -198,3 +240,7 @@ Use `dry-run: true` for `release.yml`, `source-release.yml`, `docker-publish.yml
 ### Pin helper workflows and scripts together
 
 `benchmark.yml`, `release.yml`, and `source-release.yml` check out this repository to use the helper package from `src/`. Set their `pipeline-ref` input to a tag or commit in `m-mdy-m/pipeline`. Do not pass a commit SHA from a different caller repository: that SHA will not identify a commit in the helper repository.
+
+## Toolchain action inputs added for benchmarks and extra runtimes
+
+`toolchain-quality` accepts `mode: bench` together with `bench-against`, `bench-baseline`, `bench-update-baseline`, `bench-command`, `bench-parser`, `bench-count`, `bench-threshold` and `bench-report-only`; it exposes a `regressions` output. It also installs Bun (`bun-version`) and Vim (`vim-version`) when the detected toolchain needs them, and caches package-manager downloads (`cache`). These inputs only install runtimes or pass flags; the behaviour is in `src/pipeline`.

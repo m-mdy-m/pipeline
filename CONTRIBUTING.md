@@ -4,7 +4,7 @@ Thanks for taking an interest in pipeline.
 
 ## Before you start
 
-Use Python 3.11 or newer, Git, and Make. The repository CI currently runs Python 3.12. Create a focused branch from the current default branch before changing code.
+Use Python 3.11 or newer, Git, and Make. The repository CI runs on every push and pull request with Python 3.11, 3.12 and 3.13. Create a focused branch from the current default branch before changing code.
 
 ## Where changes belong
 
@@ -12,6 +12,7 @@ Use Python 3.11 or newer, Git, and Make. The repository CI currently runs Python
 - Put behavior shared by multiple subsystems in `src/pipeline/common/` or `src/pipeline/utils/`.
 - Put provider environment handling in `src/pipeline/providers/`.
 - Keep benchmark and release domain logic in `src/pipeline/benchmark/` and `src/pipeline/release/`.
+- Put language presets (what `pipeline ci` runs for Go, Node.js, Rust, ...) in `src/pipeline/toolchains/`; provider actions and workflows only install runtimes and call the engine.
 - Keep GitHub scheduling, artifact transfer, and publishing in `.github/workflows/`.
 - Keep task definitions in `pipeline.toml` and GitLab scheduling in `.gitlab-ci.yml`.
 - Update the matching guide and example when a command, input, or workflow changes.

@@ -1,0 +1,36 @@
+# Copy to m-mdy-m.github.io/.github/workflows/deploy.yml
+name: Site
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: m-mdy-m/pipeline/.github/actions/node-quality@main   # pin a tag or SHA
+        with:
+          node-version: "22"
+          pnpm-version: "9.15.4"
+          skip: test      # the site has no test script
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: quality
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: m-mdy-m/pipeline/.github/workflows/pages.yml@main   # pin a tag or SHA
+    with:
+      build-command: pnpm install --frozen-lockfile && pnpm build
+      output-directory: dist
+      node-version: "22"

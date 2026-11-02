@@ -4,6 +4,22 @@
 
 ### Added
 
+- Added `src/pipeline/toolchains/`: provider-neutral language presets for Go, Rust, Java (Maven/Gradle), .NET, Node.js (npm/pnpm/yarn/bun), Python, C/C++ (CMake/Make) and Docker, with detection, per-stage overrides, preset options, and stage selection.
+- Added the `pipeline ci` and `pipeline detect` commands. `pipeline ci` runs install, configure, lint, build and test through the existing task runner, writes the same JSON report, and exports `language`, `package_manager` and `succeeded` to the provider output file.
+- Added GitHub composite actions `toolchain-quality`, `node-quality`, `go-quality`, `rust-quality`, `java-quality`, `dotnet-quality` and `run-pipeline`. They install a runtime and call the engine; they contain no build or test commands.
+- Added GitHub job summaries and `::error` annotations to the GitHub adapter for `ci`, `run` and `task`.
+- Added a `toolchain-preset` mode (with `stages` and `skip-stages`) to the reusable `ci.yml`, and Docker as a supported language.
+- Added GitLab variables `PIPELINE_CI_LANGUAGE`, `PIPELINE_CI_IMAGE`, `PIPELINE_CI_ROOT` and `PIPELINE_CI_ARGS` with a reusable `.pipeline:toolchain` job.
+- Added complete fixture projects under `examples/toolchains/` and a `toolchain-smoke.yml` workflow that runs every action against them, plus a negative control that must fail.
+- Added structural workflow contract tests (valid YAML, resolvable `inputs`/`steps`/`needs` references, declared action inputs, push-gate coverage) and tests proving providers contain no toolchain commands.
+- Added `docs/toolchains.md`.
+- Added a `vim` preset, Go options (`gofmt`, `tidy`, `golangci`, `race`, `cover`), C/CMake options (`generator`, `build_type`, `sanitize`), `make check` detection, and Node `format:check`/`typecheck` lint scripts. Docker no longer requires a test stage.
+- Added the optional `[ci]` table to `pipeline.toml` (`language`, `stages`, `skip`, `timeout_seconds`, `[ci.options]`, `[ci.commands]`, `[ci.bench]`). Precedence is CLI flags, then `[ci]`, then preset defaults.
+- Added portable checks (`python -m pipeline.toolchains.checks`) so the presets need no shell syntax.
+- Added `pipeline bench`: language-aware benchmarks compared against a git ref (temporary worktree) or a baseline JSON, with a threshold, `--report-only`, `--strict`, JSON and Markdown reports, and a GitHub step summary.
+- Added `benchmarks/engine.py`, `benchmark-regression.yml`, `mode: bench` for `toolchain-quality`, and Bun/Vim runtime setup with dependency caching.
+- Added `examples/projects/` with configuration and workflows for individual repositories, validated by a contract test.
+
 - Added an opt-in Gitea-style build-release asset profile with XZ variants, per-file SHA-256 sidecars, a machine-readable manifest, and a provider-neutral bundle verifier.
 - Added optional Sigstore signing, GPG detached signatures, GitHub release attestations, and signed-tag verification to the reusable GitHub release workflow.
 - Added reusable Python setup and release-assets composite actions, plus an end-to-end smoke workflow that proves assembly, verification, and tamper rejection.
@@ -15,6 +31,13 @@
 - Added Dependabot schedules for GitHub Actions and Python project metadata.
 
 ### Changed
+
+- `ci-main.yml` now runs on every push to every branch, pull requests and the merge queue, and ends in a single `gate` job. It calls the Python matrix, toolchain smoke, YAML lint, spelling and documentation workflows, and tests the pushed commit's engine instead of `main`.
+- `python-compatibility.yml`, `yamllint.yml` and `typos.yml` are now reusable (`workflow_call`) so the push gate can call them; the Python matrix also reports on macOS and Windows without blocking.
+- The `python-quality` action now runs through the shared engine (`pipeline ci --language python`) instead of embedding `compileall` and `unittest` commands. It skips `install` by default.
+- `ci.yml` installs Node.js and `requirements.txt` dependencies through the engine, sets up Rust with `rustup`, uses `actions/setup-java@v6`, and runs user-supplied commands through environment variables instead of interpolating them into the script.
+- The GitLab template is split into a reusable bootstrap and two jobs, and installs `python3` when the selected image has none.
+- `reusable-smoke.yml` runs on pushes to every branch when workflow, action or source files change.
 
 - Kept the existing standard release asset layout as the default; richer release assets are opt-in so existing reusable-workflow callers remain compatible.
 - Extended the reusable release workflow to download artifacts back onto each build target runner and run optional E2E setup/tests there, keeping GitHub Actions as orchestration only.

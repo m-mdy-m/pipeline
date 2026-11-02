@@ -1,49 +1,71 @@
 name: Pipeline Python quality
-description: Set up a supported Python runtime, compile source, and run the project's unittest suite.
+description: Set up Python, then run the Pipeline engine's Python install, build (compileall) and test stages.
 
 inputs:
   python-version:
-    description: Python version to use.
+    description: Python version to use for both the project and the Pipeline engine.
     required: false
     default: "3.12"
+  working-directory:
+    description: Project directory, relative to the workspace.
+    required: false
+    default: "."
   source-path:
-    description: Source directory passed to compileall and PYTHONPATH.
+    description: Source directory compiled by the build stage and put on PYTHONPATH for tests.
     required: false
     default: "src"
   tests-path:
-    description: Directory containing unittest files.
+    description: Directory containing the tests.
     required: false
     default: "tests"
   test-pattern:
     description: unittest discovery filename pattern.
     required: false
     default: "test_*.py"
+  runner:
+    description: unittest or pytest. Empty lets the engine choose from the project's configuration.
+    required: false
+    default: unittest
+  install-command:
+    description: Replace the preset install command.
+    required: false
+    default: ""
+  skip:
+    description: Comma separated stages to skip. The default skips install so the engine's own sources run unmodified.
+    required: false
+    default: install
+
+outputs:
+  succeeded:
+    description: "true when every stage passed."
+    value: ${{ steps.pipeline.outputs.succeeded }}
 
 runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v7.0.0
+      uses: actions/setup-python@v7.1.0
       with:
         python-version: ${{ inputs.python-version }}
 
-    - name: Compile Python source
+    - name: Run the shared Pipeline engine
+      id: pipeline
       shell: bash
+      working-directory: ${{ github.workspace }}
       env:
-        SOURCE_PATH: ${{ inputs.source-path }}
-      run: |
-        set -euo pipefail
-        test -d "$SOURCE_PATH"
-        python -m compileall -q "$SOURCE_PATH"
-
-    - name: Run unit tests
-      shell: bash
-      env:
+        PYTHONPATH: ${{ github.action_path }}/../../../src
+        PROJECT_DIR: ${{ inputs.working-directory }}
         SOURCE_PATH: ${{ inputs.source-path }}
         TESTS_PATH: ${{ inputs.tests-path }}
         TEST_PATTERN: ${{ inputs.test-pattern }}
+        TEST_RUNNER: ${{ inputs.runner }}
+        INSTALL_COMMAND: ${{ inputs.install-command }}
+        SKIP_STAGES: ${{ inputs.skip }}
       run: |
         set -euo pipefail
-        test -d "$TESTS_PATH"
-        PYTHONPATH="$SOURCE_PATH${PYTHONPATH:+:$PYTHONPATH}" \
-          python -m unittest discover -s "$TESTS_PATH" -p "$TEST_PATTERN" -v
+        args=(ci --root "$PROJECT_DIR" --language python
+          --option "source=$SOURCE_PATH" --option "tests=$TESTS_PATH" --option "test_pattern=$TEST_PATTERN")
+        [[ -z "$TEST_RUNNER" ]] || args+=(--option "runner=$TEST_RUNNER")
+        [[ -z "$INSTALL_COMMAND" ]] || args+=(--install-command "$INSTALL_COMMAND")
+        [[ -z "$SKIP_STAGES" ]] || args+=(--skip "$SKIP_STAGES")
+        python -m pipeline.providers.github "${args[@]}"

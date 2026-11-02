@@ -2,3 +2,26 @@
 # pipeline source so downstream projects can include it without copying it.
 include:
   - local: /src/pipeline/providers/gitlab/workflows/ci.yml
+
+# Every push runs the language presets against the fixtures in
+# examples/toolchains, so a broken preset or template fails this pipeline.
+toolchain-smoke:
+  extends: .pipeline:toolchain
+  parallel:
+    matrix:
+      - PIPELINE_CI_LANGUAGE: python
+        PIPELINE_CI_IMAGE: python:3.12
+        PIPELINE_CI_ROOT: examples/toolchains/python
+      - PIPELINE_CI_LANGUAGE: node
+        PIPELINE_CI_IMAGE: node:22
+        PIPELINE_CI_ROOT: examples/toolchains/node
+      - PIPELINE_CI_LANGUAGE: go
+        PIPELINE_CI_IMAGE: golang:1.23
+        PIPELINE_CI_ROOT: examples/toolchains/go
+      - PIPELINE_CI_LANGUAGE: rust
+        PIPELINE_CI_IMAGE: rust:1
+        PIPELINE_CI_ROOT: examples/toolchains/rust
+        PIPELINE_CI_ARGS: "--skip lint"
+      - PIPELINE_CI_LANGUAGE: java
+        PIPELINE_CI_IMAGE: maven:3-eclipse-temurin-21
+        PIPELINE_CI_ROOT: examples/toolchains/java-maven
