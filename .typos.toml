@@ -1,0 +1,8 @@
+[default.extend-words]
+Gitea = "Gitea"
+Gitleaks = "Gitleaks"
+MSYS2 = "MSYS2"
+PWA = "PWA"
+Sigstore = "Sigstore"
+UCRT64 = "UCRT64"
+zizmor = "zizmor"

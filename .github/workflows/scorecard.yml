@@ -1,0 +1,44 @@
+name: OSSF Scorecard
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scorecard:
+    name: Analyze supply-chain security posture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Run OSSF Scorecard
+        uses: ossf/scorecard-action@v2.4.2
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: false
+
+      - name: Upload Scorecard report
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: scorecard-report-${{ github.run_id }}
+          path: scorecard.sarif
+          if-no-files-found: error
+          retention-days: 14

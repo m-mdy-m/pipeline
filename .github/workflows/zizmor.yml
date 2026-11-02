@@ -1,0 +1,46 @@
+name: GitHub Actions security analysis
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  zizmor:
+    name: Audit workflows and local actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out workflow sources
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Analyze GitHub Actions with zizmor
+        uses: zizmorcore/zizmor-action@v0.7.1
+        with:
+          inputs: >-
+            .github/workflows/codeql.yml
+            .github/workflows/dependency-review.yml
+            .github/workflows/typos.yml
+            .github/workflows/yamllint.yml
+            .github/workflows/zizmor.yml
+            .github/workflows/pr-title.yml
+            .github/workflows/python-compatibility.yml
+            .github/workflows/scorecard.yml
+            .github/actions/python-quality/action.yml
+          collect: all
+          persona: regular
+          min-severity: high
+          min-confidence: high
+          advanced-security: "false"
+          annotations: "true"
+          config: zizmor.yml
