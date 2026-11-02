@@ -622,6 +622,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # GitHub validates permissions for every nested job when resolving a reusable
+  # workflow, even when this job's 'if' condition will skip it. Callers of this
+  # workflow must therefore grant id-token: write and attestations: write on
+  # their calling job, even when sign-assets and attest-release remain false.
   sign-and-attest:
     name: Sign assets and create release provenance
     needs: [prepare, build, assemble]
