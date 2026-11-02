@@ -38,7 +38,7 @@ class CommonHelpersTests(unittest.TestCase):
     def test_workspace_path_helper_rejects_escape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self.assertEqual(resolve_within(root, "inside/file.txt"), root / "inside" / "file.txt")
+            self.assertEqual(resolve_within(root, "inside/file.txt"), (root / "inside" / "file.txt").resolve())
             with self.assertRaises(ValueError):
                 resolve_within(root, "../outside")
 

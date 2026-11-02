@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from pipeline.benchmark import compare as cmp  # noqa: E402
 from pipeline.core.cli import main as cli_main  # noqa: E402
+from pipeline.utils.commands import split_command_line  # noqa: E402
 
 GOBENCH = """goos: linux
 pkg: example.com/demo
@@ -45,6 +46,13 @@ class ParseTests(unittest.TestCase):
 
     def test_split_command(self) -> None:
         self.assertEqual(cmp.split_command("python -c 'print(1)'"), ("python", "-c", "print(1)"))
+
+    def test_windows_command_preserves_backslashes_and_quoted_spaces(self) -> None:
+        command = r'"C:\Program Files\Python\python.exe" C:\repo\bench.py'
+        self.assertEqual(
+            split_command_line(command, windows=True),
+            (r"C:\Program Files\Python\python.exe", r"C:\repo\bench.py"),
+        )
 
 
 class CompareTests(unittest.TestCase):

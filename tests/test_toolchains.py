@@ -271,7 +271,7 @@ class GoFixtureTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = copy_fixture("go", Path(tmp))
             self.assertEqual(run_engine(project, "ci").returncode, 0)
-            (project / "demo.go").write_text("package demo\n\nfunc Add(a, b int) int { return a - b }\n", encoding="utf-8")
+            (project / "demo.go").write_text("package demo\n\nfunc Add(a, b int) int { return a - b }\n", encoding="utf-8", newline="\n")
             self.assertEqual(run_engine(project, "ci").returncode, 1)
 
 

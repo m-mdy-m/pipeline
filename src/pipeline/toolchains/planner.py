@@ -1,8 +1,6 @@
 """Turn a project directory (plus optional overrides) into a runnable task graph."""
 from __future__ import annotations
 
-import os
-import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
@@ -10,6 +8,7 @@ from typing import Mapping
 from ..core.config import PipelineConfig
 from ..core.errors import PipelineConfigError
 from ..core.models import TaskDefinition
+from ..utils.commands import split_command_line
 from .presets import PRESETS, REQUIRED_STAGES, STAGES, Step, matches, node_package_manager
 
 DEFAULT_TIMEOUT_SECONDS = 1800
@@ -49,14 +48,12 @@ def detect_toolchains(root: str | Path) -> list[str]:
 
 def _split(stage: str, text: str) -> tuple[str, ...]:
     try:
-        parts = shlex.split(text, posix=os.name != "nt")
-        if os.name == "nt":
-            parts = [part[1:-1] if len(part) >= 2 and part[0] == part[-1] and part[0] in ("'", '"' ) else part for part in parts]
+        parts = split_command_line(text)
     except ValueError as exc:
         raise CIPlanError(f"--{stage}-command is not valid shell-style quoting: {exc}") from exc
     if not parts:
         raise CIPlanError(f"--{stage}-command must not be empty; use --skip {stage} to omit the stage")
-    return tuple(parts)
+    return parts
 
 
 def build_plan(

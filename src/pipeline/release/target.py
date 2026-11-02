@@ -58,14 +58,7 @@ def _resolve_shell(
     *,
     platform_name: str | None = None,
 ) -> str:
-    """Resolve Bash inside MSYS2 explicitly on Windows runners.
-
-    The setup-msys2 action exposes an msys2.cmd wrapper, but that wrapper
-    is not added to PATH as bash. A subprocess launched by Windows Python
-    can therefore resolve bash to the Windows WSL launcher in System32.
-    Use the Bash binary from the selected MSYS2 installation instead and add
-    its toolchain directories to the child process PATH.
-    """
+    """Resolve MSYS2 or Git Bash on Windows without selecting the WSL shim."""
     current_platform = sys.platform if platform_name is None else platform_name
     if current_platform != "win32" or shell != "bash":
         return shell
@@ -73,14 +66,35 @@ def _resolve_shell(
     msystem = environment.get("MSYSTEM", "").upper()
     location = environment.get("MSYS2_LOCATION", "")
     if not msystem:
-        # Hosted Windows runners include Git for Windows, but its Bash may
-        # not be on PATH for processes launched by Python.
-        discovered = shutil.which("bash")
-        if discovered and "system32" not in discovered.lower():
+        # Simulated win32 calls on POSIX must remain deterministic; only query
+        # the host PATH when this process is actually running on Windows.
+        discovered = None
+        if os.name == "nt":
+            path_entries = environment.get("PATH", "").split(os.pathsep)
+            safe_path = os.pathsep.join(
+                entry for entry in path_entries if "system32" not in entry.lower()
+            )
+            discovered = shutil.which("bash", path=safe_path)
+        if discovered:
             return discovered
-        program_files = environment.get("ProgramFiles", "C:\\Program Files")
-        git_bash = Path(program_files) / "Git" / "bin" / "bash.exe"
-        return str(git_bash) if git_bash.is_file() else (discovered or shell)
+
+        program_files = environment.get("ProgramFiles", "")
+        if program_files:
+            git_root = Path(program_files) / "Git"
+            for candidate in (
+                git_root / "usr" / "bin" / "bash.exe",
+                git_root / "bin" / "bash.exe",
+            ):
+                if candidate.is_file():
+                    return str(candidate)
+
+        if os.name == "nt" and shutil.which("bash", path=environment.get("PATH")):
+            raise ReleaseTargetError(
+                "Git Bash was not found; refusing to launch the WSL bash.exe. "
+                "Install Git for Windows or configure MSYS2."
+            )
+        return shell
+
     if not location:
         runner_temp = environment.get("RUNNER_TEMP", "")
         default_location = Path(runner_temp) / "msys64" if runner_temp else None
@@ -113,7 +127,6 @@ def _resolve_shell(
     environment["MSYS2_PATH_TYPE"] = "inherit"
     environment["CHERE_INVOKING"] = "1"
     return str(bash)
-
 
 def execute_target_stage(
     *,
@@ -179,11 +192,12 @@ def execute_target_stage(
         )
         if process.stdout is None:
             raise OSError("could not open release command output stream")
-        while True:
-            chunk = os.read(process.stdout.fileno(), 65536)
-            if not chunk:
-                break
-            _write_chunk(chunk)
+        with process.stdout:
+            while True:
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                _write_chunk(chunk)
         exit_code = process.wait()
         if exit_code != 0:
             error = f"{stage} command exited with status {exit_code}"

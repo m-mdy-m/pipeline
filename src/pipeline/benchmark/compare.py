@@ -6,9 +6,7 @@ shows the Markdown report. Values are nanoseconds (lower is better).
 from __future__ import annotations
 
 import json
-import os
 import re
-import shlex
 import statistics
 import subprocess
 import tempfile
@@ -18,6 +16,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from ..common.io import atomic_write_json
+from ..utils.commands import split_command_line
 
 SCHEMA_VERSION = 1
 DEFAULT_THRESHOLD_PERCENT = 25.0
@@ -158,11 +157,9 @@ def measure_at_ref(root: Path, ref: str, command: Sequence[str], parser: str, su
 
 def split_command(text: str) -> tuple[str, ...]:
     try:
-        parts = shlex.split(text, posix=os.name != "nt")
-        if os.name == "nt":
-            parts = [part[1:-1] if len(part) >= 2 and part[0] == part[-1] and part[0] in ("'", '"' ) else part for part in parts]
+        parts = split_command_line(text)
     except ValueError as exc:
         raise BenchmarkError(f"invalid benchmark command: {exc}") from exc
     if not parts:
         raise BenchmarkError("benchmark command must not be empty")
-    return tuple(parts)
+    return parts
