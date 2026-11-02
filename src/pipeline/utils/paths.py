@@ -1,13 +1,21 @@
 """Filesystem path boundary helpers."""
 from __future__ import annotations
+
 from pathlib import Path
 
+
 def resolve_within(root: str | Path, path: str | Path, *, label: str = "path") -> Path:
-    base = Path(root).expanduser().resolve()
+    # Keep the caller's lexical spelling (notably /var vs /private/var on
+    # macOS and 8.3 aliases on Windows) while checking containment against
+    # canonical paths so symlinks cannot escape the workspace.
+    base = Path(root).expanduser().absolute()
     candidate = Path(path).expanduser()
-    resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
+    lexical = candidate if candidate.is_absolute() else base / candidate
+
+    canonical_base = base.resolve()
+    canonical_candidate = lexical.resolve()
     try:
-        resolved.relative_to(base)
+        canonical_candidate.relative_to(canonical_base)
     except ValueError as exc:
-        raise ValueError(f"{label} must stay inside {base}: {path}") from exc
-    return resolved
+        raise ValueError(f"{label} must stay inside {canonical_base}: {path}") from exc
+    return lexical
