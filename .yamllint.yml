@@ -1,0 +1,17 @@
+extends: relaxed
+
+rules:
+  indentation:
+    level: error
+    spaces: 2
+  key-duplicates:
+    level: error
+  trailing-spaces:
+    level: error
+  new-line-at-end-of-file:
+    level: error
+  truthy:
+    level: error
+    allowed-values: ["true", "false", "on", "off"]
+    check-keys: false
+  line-length: disable

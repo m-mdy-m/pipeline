@@ -1,0 +1,49 @@
+name: Pipeline Python quality
+description: Set up a supported Python runtime, compile source, and run the project's unittest suite.
+
+inputs:
+  python-version:
+    description: Python version to use.
+    required: false
+    default: "3.12"
+  source-path:
+    description: Source directory passed to compileall and PYTHONPATH.
+    required: false
+    default: "src"
+  tests-path:
+    description: Directory containing unittest files.
+    required: false
+    default: "tests"
+  test-pattern:
+    description: unittest discovery filename pattern.
+    required: false
+    default: "test_*.py"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v7.0.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Compile Python source
+      shell: bash
+      env:
+        SOURCE_PATH: ${{ inputs.source-path }}
+      run: |
+        set -euo pipefail
+        test -d "$SOURCE_PATH"
+        python -m compileall -q "$SOURCE_PATH"
+
+    - name: Run unit tests
+      shell: bash
+      env:
+        SOURCE_PATH: ${{ inputs.source-path }}
+        TESTS_PATH: ${{ inputs.tests-path }}
+        TEST_PATTERN: ${{ inputs.test-pattern }}
+      run: |
+        set -euo pipefail
+        test -d "$TESTS_PATH"
+        PYTHONPATH="$SOURCE_PATH${PYTHONPATH:+:$PYTHONPATH}" \
+          python -m unittest discover -s "$TESTS_PATH" -p "$TEST_PATTERN" -v

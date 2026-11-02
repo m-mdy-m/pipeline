@@ -1,0 +1,64 @@
+name: Dependency review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - "pyproject.toml"
+      - "setup.py"
+      - "setup.cfg"
+      - "Pipfile*"
+      - "poetry.lock"
+      - "uv.lock"
+      - "pdm.lock"
+      - "**/requirements*.txt"
+      - "**/constraints*.txt"
+      - ".github/workflows/dependency-review.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Review dependency changes
+    # Enable the repository Dependency graph and set this variable to "true"
+    # to activate the action. An unset variable leaves the optional job skipped.
+    if: vars.PIPELINE_DEPENDENCY_REVIEW_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check dependency changes for vulnerabilities
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime,development
+          comment-summary-in-pr: on-failure
+          show-patched-versions: true
+
+  dependency-review-prerequisite:
+    name: Report Dependency Graph prerequisite
+    if: vars.PIPELINE_DEPENDENCY_REVIEW_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - name: Explain why dependency scanning is disabled
+        shell: bash
+        run: |
+          {
+            echo "## Dependency review is not configured"
+            echo
+            echo "The dependency graph feature is not enabled for this repository."
+            echo "Enable it under Settings → Security → Code security and analysis,"
+            echo "then set the Actions variable `PIPELINE_DEPENDENCY_REVIEW_ENABLED=true`."
+            echo "The dependency review action will run automatically on future dependency PRs."
+          } >> "$GITHUB_STEP_SUMMARY"
