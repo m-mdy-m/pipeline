@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -72,7 +73,14 @@ def _resolve_shell(
     msystem = environment.get("MSYSTEM", "").upper()
     location = environment.get("MSYS2_LOCATION", "")
     if not msystem:
-        return shell
+        # Hosted Windows runners include Git for Windows, but its Bash may
+        # not be on PATH for processes launched by Python.
+        discovered = shutil.which("bash")
+        if discovered and Path(discovered).name.lower() == "bash.exe":
+            return discovered
+        program_files = environment.get("ProgramFiles", "C:\\Program Files")
+        git_bash = Path(program_files) / "Git" / "bin" / "bash.exe"
+        return str(git_bash) if git_bash.is_file() else (discovered or shell)
     if not location:
         runner_temp = environment.get("RUNNER_TEMP", "")
         default_location = Path(runner_temp) / "msys64" if runner_temp else None
