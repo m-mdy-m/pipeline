@@ -22,7 +22,22 @@ class TaskRunner:
         start_label=_now();start=time.monotonic()
         logger.info(f"Starting task {task.name}: {' '.join(task.command)}",component="task-runner")
         try:
-            result=subprocess.run(list(task.command),cwd=cwd,env=env,check=False,timeout=task.timeout_seconds,shell=False)
+            try:
+                result = subprocess.run(
+                    list(task.command), cwd=cwd, env=env, check=False,
+                    timeout=task.timeout_seconds, shell=False,
+                )
+            except OSError as exc:
+                # Windows cannot launch .cmd/.bat shims (npm, npx, etc.)
+                # directly. Retry through cmd.exe, preserving argv quoting.
+                if os.name != "nt" or getattr(exc, "winerror", None) != 2:
+                    raise
+                command_line = subprocess.list2cmdline(list(task.command))
+                result = subprocess.run(
+                    ["cmd.exe", "/d", "/s", "/c", command_line],
+                    cwd=cwd, env=env, check=False, timeout=task.timeout_seconds,
+                    shell=False,
+                )
             code=result.returncode;status="succeeded" if code==0 else "failed";error="" if code==0 else f"Command exited with {code}"
         except subprocess.TimeoutExpired:code,status,error=124,"failed",f"Timeout after {task.timeout_seconds}s"
         except OSError as exc:code,status,error=127,"failed",f"Could not start command: {exc}"
