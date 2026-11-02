@@ -76,7 +76,7 @@ def _resolve_shell(
         # Hosted Windows runners include Git for Windows, but its Bash may
         # not be on PATH for processes launched by Python.
         discovered = shutil.which("bash")
-        if discovered and Path(discovered).name.lower() == "bash.exe":
+        if discovered and "system32" not in discovered.lower():
             return discovered
         program_files = environment.get("ProgramFiles", "C:\\Program Files")
         git_bash = Path(program_files) / "Git" / "bin" / "bash.exe"
