@@ -221,7 +221,21 @@ A stable release without its matching changelog section is rejected. Release not
 
 ## Permissions and secrets
 
-The workflow that calls a publishing workflow must allow `contents: write`. The publishing job uses that permission to create the GitHub Release.
+The job that calls `release.yml` must grant the permissions needed by its nested jobs:
+
+```yaml
+jobs:
+  release:
+    uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+```
+
+All three permissions are required when calling this reusable workflow. GitHub validates the permissions of nested jobs while resolving the reusable workflow, before evaluating job-level `if` conditions. Consequently, `id-token: write` and `attestations: write` must be granted even when `sign-assets` and `attest-release` are left at their default `false` values and the `sign-and-attest` job is skipped. Those two permissions are used only when signing or provenance attestation is enabled. The `contents: write` permission is used by the publishing job to create the GitHub Release.
+
+The source-only `source-release.yml` workflow does not create an OIDC-backed attestation and needs only `contents: write` on its calling job.
 
 The default `GITHUB_TOKEN` is enough for ordinary GitHub Releases. The build-release workflow also accepts an optional `release-token` secret when a project needs a different token. Projects whose mobile build commands require an application endpoint may pass it through the optional `mobile-server-url` secret; the reusable workflow exposes it to project commands as `IDIOS_MOBILE_SERVER_URL` and never commits the endpoint. Source releases need `submodule-token` only when they must read private GitHub submodules.
 
