@@ -1,6 +1,6 @@
 """Task graph executor with timeouts, failure propagation and structured reports."""
 from __future__ import annotations
-import os,subprocess,time
+import os,subprocess,time,shutil
 from datetime import datetime,timezone
 from .config import PipelineConfig
 from .context import PipelineContext
@@ -22,7 +22,21 @@ class TaskRunner:
         start_label=_now();start=time.monotonic()
         logger.info(f"Starting task {task.name}: {' '.join(task.command)}",component="task-runner")
         try:
-            result=subprocess.run(list(task.command),cwd=cwd,env=env,check=False,timeout=task.timeout_seconds,shell=False)
+            try:
+                result=subprocess.run(list(task.command),cwd=cwd,env=env,check=False,timeout=task.timeout_seconds,shell=False)
+            except OSError as exc:
+                # Windows cannot execute npm/npx .cmd and .bat shims directly.
+                if os.name!="nt" or getattr(exc,"winerror",None)!=2 or not task.command:
+                    raise
+                shim=shutil.which(task.command[0],path=env.get("PATH"))
+                if not shim or os.path.splitext(shim)[1].lower() not in (".cmd",".bat"):
+                    raise
+                command_line=subprocess.list2cmdline([shim,*task.command[1:]])
+                command_line='"'+command_line+'"'
+                result=subprocess.run(
+                    [env.get("COMSPEC","cmd.exe"),"/d","/s","/c",command_line],
+                    cwd=cwd,env=env,check=False,timeout=task.timeout_seconds,shell=False,
+                )
             code=result.returncode;status="succeeded" if code==0 else "failed";error="" if code==0 else f"Command exited with {code}"
         except subprocess.TimeoutExpired:code,status,error=124,"failed",f"Timeout after {task.timeout_seconds}s"
         except OSError as exc:code,status,error=127,"failed",f"Could not start command: {exc}"

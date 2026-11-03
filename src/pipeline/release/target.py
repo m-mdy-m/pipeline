@@ -58,75 +58,79 @@ def _resolve_shell(
     *,
     platform_name: str | None = None,
 ) -> str:
-    """Resolve MSYS2 or Git Bash on Windows without selecting the WSL shim."""
+    """Resolve an installed MSYS2 or Git Bash, never the Windows WSL shim."""
     current_platform = sys.platform if platform_name is None else platform_name
     if current_platform != "win32" or shell != "bash":
         return shell
 
     msystem = environment.get("MSYSTEM", "").upper()
     location = environment.get("MSYS2_LOCATION", "")
-    if not msystem:
-        # Simulated win32 calls on POSIX must remain deterministic; only query
-        # the host PATH when this process is actually running on Windows.
-        discovered = None
-        if os.name == "nt":
-            path_entries = environment.get("PATH", "").split(os.pathsep)
-            safe_path = os.pathsep.join(
-                entry for entry in path_entries if "system32" not in entry.lower()
-            )
-            discovered = shutil.which("bash", path=safe_path)
-        if discovered:
-            return discovered
-
-        program_files = environment.get("ProgramFiles", "")
-        if program_files:
-            git_root = Path(program_files) / "Git"
-            for candidate in (
-                git_root / "usr" / "bin" / "bash.exe",
-                git_root / "bin" / "bash.exe",
-            ):
-                if candidate.is_file():
-                    return str(candidate)
-
-        if os.name == "nt" and shutil.which("bash", path=environment.get("PATH")):
-            raise ReleaseTargetError(
-                "Git Bash was not found; refusing to launch the WSL bash.exe. "
-                "Install Git for Windows or configure MSYS2."
-            )
-        return shell
-
     if not location:
         runner_temp = environment.get("RUNNER_TEMP", "")
         default_location = Path(runner_temp) / "msys64" if runner_temp else None
         if default_location is not None and default_location.is_dir():
             location = str(default_location)
-    if not location:
-        return shell
 
-    prefix = {
-        "MSYS": "usr",
-        "MINGW32": "mingw32",
-        "MINGW64": "mingw64",
-        "UCRT64": "ucrt64",
-        "CLANG64": "clang64",
-        "CLANGARM64": "clangarm64",
-    }.get(msystem)
-    if prefix is None:
-        raise ReleaseTargetError(f"Unsupported MSYS2 environment: {msystem!r}")
+    if msystem and location:
+        prefix = {
+            "MSYS": "usr", "MINGW32": "mingw32", "MINGW64": "mingw64",
+            "UCRT64": "ucrt64", "CLANG64": "clang64", "CLANGARM64": "clangarm64",
+        }.get(msystem)
+        if prefix is None:
+            raise ReleaseTargetError(f"Unsupported MSYS2 environment: {msystem!r}")
+        root = Path(location).expanduser()
+        bash = root / "usr" / "bin" / "bash.exe"
+        if not bash.is_file():
+            raise ReleaseTargetError(f"MSYS2 Bash was not found at the configured location: {bash}")
+        path_entries = [str(root / prefix / "bin"), str(root / "usr" / "bin")]
+        existing_path = environment.get("PATH", "")
+        if existing_path:
+            path_entries.append(existing_path)
+        environment["PATH"] = ";".join(path_entries)
+        environment["MSYS2_PATH_TYPE"] = "inherit"
+        environment["CHERE_INVOKING"] = "1"
+        return str(bash)
 
-    root = Path(location).expanduser()
-    bash = root / "usr" / "bin" / "bash.exe"
-    if not bash.is_file():
-        raise ReleaseTargetError(f"MSYS2 Bash was not found at the configured location: {bash}")
+    path_value = environment.get("PATH", "")
+    path_entries = path_value.split(os.pathsep) if path_value else []
+    safe_path = os.pathsep.join(
+        entry for entry in path_entries if "system32" not in entry.lower()
+    )
+    if os.name == "nt" and safe_path:
+        discovered = shutil.which("bash.exe", path=safe_path) or shutil.which("bash", path=safe_path)
+        if discovered:
+            return discovered
 
-    path_entries = [str(root / prefix / "bin"), str(root / "usr" / "bin")]
-    existing_path = environment.get("PATH", "")
-    if existing_path:
-        path_entries.append(existing_path)
-    environment["PATH"] = ";".join(path_entries)
-    environment["MSYS2_PATH_TYPE"] = "inherit"
-    environment["CHERE_INVOKING"] = "1"
-    return str(bash)
+    if os.name == "nt":
+        git_exe = shutil.which("git.exe", path=path_value) or shutil.which("git", path=path_value)
+        roots: list[Path] = []
+        for key in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+            value = environment.get(key)
+            if value:
+                roots.append(Path(value) / "Git")
+        local_app_data = environment.get("LOCALAPPDATA")
+        if local_app_data:
+            roots.append(Path(local_app_data) / "Programs" / "Git")
+        if git_exe:
+            git_path = Path(git_exe).resolve()
+            if git_path.parent.name.lower() == "cmd":
+                roots.insert(0, git_path.parent.parent)
+        seen: set[str] = set()
+        for root in roots:
+            normalized = str(root).casefold()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            for candidate in (root / "usr" / "bin" / "bash.exe", root / "bin" / "bash.exe"):
+                if candidate.is_file():
+                    return str(candidate)
+        resolved_bash = shutil.which("bash.exe", path=path_value) or shutil.which("bash", path=path_value)
+        if resolved_bash and "system32" in resolved_bash.lower():
+            raise ReleaseTargetError(
+                "The only bash.exe on PATH is the Windows WSL launcher. "
+                "Install Git for Windows or configure MSYS2 before running release stages."
+            )
+    return shell
 
 def execute_target_stage(
     *,

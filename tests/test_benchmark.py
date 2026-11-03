@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from pipeline.benchmark import compare as cmp  # noqa: E402
 from pipeline.core.cli import main as cli_main  # noqa: E402
 from pipeline.utils.commands import split_command_line  # noqa: E402
+from pipeline.toolchains.bench import bench_plan  # noqa: E402
 
 GOBENCH = """goos: linux
 pkg: example.com/demo
@@ -51,6 +52,14 @@ class ParseTests(unittest.TestCase):
         command = r'"C:\Program Files\Python\python.exe" C:\repo\bench.py'
         self.assertEqual(
             split_command_line(command, windows=True),
+            (r"C:\Program Files\Python\python.exe", r"C:\repo\bench.py"),
+        )
+
+    def test_bench_plan_uses_windows_safe_command_parser(self) -> None:
+        command = r'"C:\Program Files\Python\python.exe" C:\repo\bench.py'
+        plan = bench_plan(Path.cwd(), "custom", {}, command, "gobench", 1)
+        self.assertEqual(
+            plan.command,
             (r"C:\Program Files\Python\python.exe", r"C:\repo\bench.py"),
         )
 

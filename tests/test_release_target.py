@@ -61,6 +61,21 @@ class ReleaseTargetTests(unittest.TestCase):
                 f"{root / 'clangarm64' / 'bin'};{root / 'usr' / 'bin'};"
             ))
 
+    def test_windows_git_bash_is_selected_instead_of_system_wsl_bash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bash = root / "Git" / "bin" / "bash.exe"
+            bash.parent.mkdir(parents=True)
+            bash.write_bytes(b"test executable")
+            environment = {
+                "ProgramFiles": str(root),
+                "PATH": r"C:\Windows\System32",
+            }
+            self.assertEqual(
+                _resolve_shell("bash", environment, platform_name="win32"),
+                str(bash),
+            )
+
     def test_non_msys2_shell_resolution_is_unchanged(self) -> None:
         environment = {"PATH": "/usr/bin"}
         self.assertEqual(

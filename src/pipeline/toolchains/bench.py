@@ -1,7 +1,7 @@
 """Which command measures performance for a language, and how to read its output."""
 from __future__ import annotations
 
-import shlex
+from ..utils.commands import split_command_line
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -28,7 +28,7 @@ def bench_plan(root: Path, language: str, options: Mapping[str, str], command: s
         raise CIPlanError(f"Unsupported language {language!r}")
     if command:
         try:
-            parts = tuple(shlex.split(command))
+            parts = split_command_line(command)
         except ValueError as exc:
             raise CIPlanError(f"invalid benchmark command: {exc}") from exc
         if not parts:
