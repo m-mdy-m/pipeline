@@ -31,11 +31,11 @@ class TaskRunner:
                 shim=shutil.which(task.command[0],path=env.get("PATH"))
                 if not shim or os.path.splitext(shim)[1].lower() not in (".cmd",".bat"):
                     raise
-                command_line=subprocess.list2cmdline([shim,*task.command[1:]])
-                command_line='"'+command_line+'"'
+                # Python's Windows shell handling applies the required cmd.exe
+                # quoting for a verified batch shim. Keep normal commands shell-free.
                 result=subprocess.run(
-                    [env.get("COMSPEC","cmd.exe"),"/d","/s","/c",command_line],
-                    cwd=cwd,env=env,check=False,timeout=task.timeout_seconds,shell=False,
+                    [shim,*task.command[1:]],
+                    cwd=cwd,env=env,check=False,timeout=task.timeout_seconds,shell=True,
                 )
             code=result.returncode;status="succeeded" if code==0 else "failed";error="" if code==0 else f"Command exited with {code}"
         except subprocess.TimeoutExpired:code,status,error=124,"failed",f"Timeout after {task.timeout_seconds}s"
