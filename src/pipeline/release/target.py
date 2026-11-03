@@ -101,29 +101,32 @@ def _resolve_shell(
         if discovered:
             return discovered
 
-    if os.name == "nt":
-        git_exe = shutil.which("git.exe", path=path_value) or shutil.which("git", path=path_value)
-        roots: list[Path] = []
-        for key in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
-            value = environment.get(key)
-            if value:
-                roots.append(Path(value) / "Git")
-        local_app_data = environment.get("LOCALAPPDATA")
-        if local_app_data:
-            roots.append(Path(local_app_data) / "Programs" / "Git")
-        if git_exe:
-            git_path = Path(git_exe).resolve()
-            if git_path.parent.name.lower() == "cmd":
-                roots.insert(0, git_path.parent.parent)
-        seen: set[str] = set()
-        for root in roots:
-            normalized = str(root).casefold()
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            for candidate in (root / "usr" / "bin" / "bash.exe", root / "bin" / "bash.exe"):
-                if candidate.is_file():
-                    return str(candidate)
+    git_exe = (
+        shutil.which("git.exe", path=path_value) or shutil.which("git", path=path_value)
+        if os.name == "nt" else None
+    )
+    roots: list[Path] = []
+    for key in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+        value = environment.get(key)
+        if value:
+            roots.append(Path(value) / "Git")
+    local_app_data = environment.get("LOCALAPPDATA")
+    if local_app_data:
+        roots.append(Path(local_app_data) / "Programs" / "Git")
+    if git_exe:
+        git_path = Path(git_exe).resolve()
+        if git_path.parent.name.lower() == "cmd":
+            roots.insert(0, git_path.parent.parent)
+    seen: set[str] = set()
+    for root in roots:
+        normalized = str(root).casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        for candidate in (root / "usr" / "bin" / "bash.exe", root / "bin" / "bash.exe"):
+            if candidate.is_file():
+                return str(candidate)
+
         resolved_bash = shutil.which("bash.exe", path=path_value) or shutil.which("bash", path=path_value)
         if resolved_bash and "system32" in resolved_bash.lower():
             raise ReleaseTargetError(

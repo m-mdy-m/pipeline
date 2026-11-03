@@ -56,8 +56,11 @@ class ParseTests(unittest.TestCase):
         )
 
     def test_bench_plan_uses_windows_safe_command_parser(self) -> None:
+        from unittest.mock import patch
+
         command = r'"C:\Program Files\Python\python.exe" C:\repo\bench.py'
-        plan = bench_plan(Path.cwd(), "custom", {}, command, "gobench", 1)
+        with patch("pipeline.utils.commands.os.name", "nt"):
+            plan = bench_plan(Path.cwd(), "custom", {}, command, "gobench", 1)
         self.assertEqual(
             plan.command,
             (r"C:\Program Files\Python\python.exe", r"C:\repo\bench.py"),
