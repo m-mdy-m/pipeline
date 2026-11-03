@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+## [1.2.0] - 2026-11-03
+
 ### Added
 
 - Added `src/pipeline/toolchains/`: provider-neutral language presets for Go, Rust, Java (Maven/Gradle), .NET, Node.js (npm/pnpm/yarn/bun), Python, C/C++ (CMake/Make) and Docker, with detection, per-stage overrides, preset options, and stage selection.
@@ -43,6 +47,14 @@
 - Extended the reusable release workflow to download artifacts back onto each build target runner and run optional E2E setup/tests there, keeping GitHub Actions as orchestration only.
 - Added merge-queue support to repository CI.
 - Configured zizmor to accept version-tag references without requiring commit-SHA pins, matching the repository's tag-based action policy.
+
+### Fixed
+
+- Fixed Python compatibility checks across Windows and macOS by removing host-specific assumptions from the test suite.
+- Preserved Windows path separators and quoted executable paths when parsing benchmark and toolchain commands.
+- Fixed task execution for Windows `.cmd` and `.bat` shims by using native subprocess shell handling for verified batch files while keeping regular commands shell-free.
+- Fixed Windows Bash discovery to prefer Git for Windows or the configured MSYS2 installation instead of selecting the WSL launcher from `System32`.
+- Made Windows shell-resolution checks deterministic and benchmark command-parser tests independent of the host operating system.
 
 ## [1.1.2] - 2026-10-31
 
