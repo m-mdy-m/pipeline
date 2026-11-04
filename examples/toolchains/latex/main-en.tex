@@ -2,11 +2,22 @@
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage[backend=biber,style=chicago-notes]{biblatex}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 \addbibresource{references.bib}
 \title{A Minimal English Document}
 \author{Pipeline Fixture}
 \begin{document}
 \maketitle
 A small reproducible LaTeX build with a Chicago Notes bibliography\cite{sample}.
+
+\begin{algorithm}
+\caption{A minimal algorithm}
+\begin{algorithmic}
+\State Initialize the result to zero
+\State Return the result
+\end{algorithmic}
+\end{algorithm}
+
 \printbibliography
 \end{document}
