@@ -16,7 +16,9 @@ jobs:
   auto-detect:
     name: toolchain-quality (${{ matrix.fixture }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # TeX Live setup downloads several large packages on cold runners.
+    # Give only the LaTeX matrix leg extra headroom for slow Ubuntu mirrors.
+    timeout-minutes: ${{ matrix.fixture == 'latex' && 35 || 20 }}
     strategy:
       fail-fast: false
       matrix:
