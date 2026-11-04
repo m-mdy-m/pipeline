@@ -1,9 +1,9 @@
 .PHONY: build clean
 
 build:
-	rm -f build/*.pdf
+	rm -f build/*.pdf build/*.bcf build/*.bbl build/*.run.xml
 	mkdir -p build
-	latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -outdir=build main-en.tex
+	latexmk -pdf -usebiber -interaction=nonstopmode -halt-on-error -file-line-error -outdir=build main-en.tex
 	latexmk -xelatex -interaction=nonstopmode -halt-on-error -file-line-error -outdir=build main-fa.tex
 
 clean:
