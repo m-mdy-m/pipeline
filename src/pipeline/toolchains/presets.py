@@ -308,8 +308,8 @@ PRESETS: dict[str, Preset] = {p.name: p for p in (
     Preset("node", "Node.js (npm, pnpm, yarn, bun)", ("package.json",), _node, ("node",)),
     Preset("python", "Python", ("pyproject.toml", "setup.py", "requirements.txt"), _python, ("python",)),
     Preset("vim", "Vim/Neovim plugin", ("plugin/*.vim", "autoload/*.vim"), _vim, ("vim",)),
-    Preset("c", "C/C++ (CMake or Make)", ("CMakeLists.txt", "Makefile", "makefile", "GNUmakefile"), _c, ()),
     Preset("latex", "LaTeX documents (pdfLaTeX, XeLaTeX or LuaLaTeX)", ("main.tex", "latexmkrc", ".latexmkrc", "*.tex"), _latex, ("latexmk",), ("build", "test")),
+    Preset("c", "C/C++ (CMake or Make)", ("CMakeLists.txt", "Makefile", "makefile", "GNUmakefile"), _c, ()),
     Preset("docker", "Container image (Dockerfile)", ("Dockerfile",), _docker, ("docker",), ()),
 )}
 
