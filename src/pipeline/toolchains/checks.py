@@ -111,7 +111,7 @@ def latex_pdf(root: Path, paths: Sequence[str]) -> int:
     if output.is_file():
         files = [output] if output.suffix.lower() == ".pdf" else []
     elif output.is_dir():
-        files = sorted(output.rglob("*.pdf"))
+        files = sorted(p for p in output.rglob("*") if p.suffix.lower() == ".pdf")
     else:
         files = []
     if not files:
@@ -121,14 +121,15 @@ def latex_pdf(root: Path, paths: Sequence[str]) -> int:
     invalid: list[Path] = []
     for path in files:
         try:
+            size = path.stat().st_size
             with path.open("rb") as stream:
                 header = stream.read(8)
-                stream.seek(max(0, path.stat().st_size - 2048))
+                stream.seek(max(0, size - 2048))
                 tail = stream.read()
         except OSError as exc:
             print(f"cannot read PDF {path}: {exc}", file=sys.stderr)
             return 1
-        if not header.startswith(b"%PDF-") or b"%%EOF" not in tail or path.stat().st_size < 16:
+        if not header.startswith(b"%PDF-") or b"%%EOF" not in tail or size < 16:
             invalid.append(path)
     if invalid:
         for path in invalid:
