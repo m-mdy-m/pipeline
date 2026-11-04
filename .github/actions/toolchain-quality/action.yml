@@ -3,7 +3,7 @@ description: Provision the runtime for any supported language (or auto-detect it
 
 inputs:
   language:
-    description: auto, go, node, rust, java, dotnet, python, c, docker, or custom. "auto" detects it from the project files.
+    description: auto, go, node, rust, java, dotnet, python, c, latex, docker, or custom. "auto" detects it from the project files.
     required: false
     default: auto
   go-version:
@@ -192,11 +192,25 @@ runs:
       with:
         bun-version: ${{ inputs.bun-version }}
 
-    - name: Set up Vim
-      if: steps.detect.outputs.language == 'vim'
-      uses: rhysd/action-setup-vim@v1
-      with:
-        version: ${{ inputs.vim-version }}
+    - name: Set up LaTeX (English and Persian)
+      if: steps.detect.outputs.language == 'latex'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v apt-get >/dev/null 2>&1; then
+          echo "The LaTeX preset currently requires a Debian/Ubuntu runner." >&2
+          exit 2
+        fi
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          latexmk biber \
+          texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+          texlive-xetex texlive-luatex texlive-lang-arabic \
+          texlive-fonts-recommended fonts-liberation fonts-noto fonts-noto-cjk \
+          fonts-vazirmatn fontconfig
+        sudo fc-cache -f >/dev/null 2>&1 || true
+        latexmk -v
+        xelatex --version | head -1
 
     - name: Set up Rust
       if: steps.detect.outputs.language == 'rust'

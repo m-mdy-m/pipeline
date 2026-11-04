@@ -247,6 +247,54 @@ def _vim(root: Path, options: Mapping[str, str]) -> list[Step]:
     return steps
 
 
+# --------------------------------------------------------------------- latex
+def _latex(root: Path, options: Mapping[str, str]) -> list[Step]:
+    """Build a LaTeX project and verify that at least one valid PDF was produced."""
+    engine = options.get("engine", "pdflatex").lower()
+    engines = {
+        "pdflatex": "-pdf",
+        "xelatex": "-xelatex",
+        "lualatex": "-lualatex",
+    }
+    if engine not in engines:
+        raise ValueError(f"engine must be pdflatex, xelatex or lualatex, not {engine!r}")
+
+    output = options.get("output", "build")
+    output_path = Path(output)
+    if output_path.is_absolute() or ".." in output_path.parts or not output:
+        raise ValueError("output must be a non-empty path inside the project")
+
+    source = options.get("source", "")
+    if _make_has_target(root, "build"):
+        build = Step("build", ("make", "build"), "Run the project's configured LaTeX build")
+    else:
+        if not source:
+            candidates = sorted(path.name for path in root.glob("*.tex") if path.is_file())
+            if (root / "main.tex").is_file():
+                source = "main.tex"
+            elif len(candidates) == 1:
+                source = candidates[0]
+            elif not candidates:
+                raise ValueError("no root-level .tex source found; set source=... or add a Makefile build target")
+            else:
+                raise ValueError("multiple .tex sources found; set source=... or add a Makefile build target")
+        source_path = Path(source)
+        if source_path.is_absolute() or ".." in source_path.parts or source_path.suffix.lower() != ".tex":
+            raise ValueError("source must be a .tex path inside the project")
+        if not (root / source_path).is_file():
+            raise ValueError(f"LaTeX source does not exist: {source}")
+        command = (
+            "latexmk", engines[engine], "-interaction=nonstopmode", "-halt-on-error",
+            "-file-line-error", f"-outdir={output}", source,
+        )
+        build = Step("build", command, f"Build {source} with {engine}")
+
+    return [
+        build,
+        Step("test", _check("latex-pdf", output), "Validate generated PDF files"),
+    ]
+
+
 # --------------------------------------------------------------------- docker
 def _docker(root: Path, options: Mapping[str, str]) -> list[Step]:
     return [Step("build", ("docker", "build", "-f", "Dockerfile", "-t", "pipeline-ci:local", "."), "Build the image")]
@@ -261,6 +309,7 @@ PRESETS: dict[str, Preset] = {p.name: p for p in (
     Preset("python", "Python", ("pyproject.toml", "setup.py", "requirements.txt"), _python, ("python",)),
     Preset("vim", "Vim/Neovim plugin", ("plugin/*.vim", "autoload/*.vim"), _vim, ("vim",)),
     Preset("c", "C/C++ (CMake or Make)", ("CMakeLists.txt", "Makefile", "makefile", "GNUmakefile"), _c, ()),
+    Preset("latex", "LaTeX documents (pdfLaTeX, XeLaTeX or LuaLaTeX)", ("main.tex", "latexmkrc", ".latexmkrc", "*.tex"), _latex, ("latexmk",), ("build", "test")),
     Preset("docker", "Container image (Dockerfile)", ("Dockerfile",), _docker, ("docker",), ()),
 )}
 

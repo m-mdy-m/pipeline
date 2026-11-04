@@ -104,8 +104,43 @@ def vim_helptags(root: Path, paths: Sequence[str]) -> int:
     return 0
 
 
+def latex_pdf(root: Path, paths: Sequence[str]) -> int:
+    """Validate that a LaTeX build directory contains at least one complete PDF."""
+    output = Path(paths[0]) if paths else Path("build")
+    output = output if output.is_absolute() else root / output
+    if output.is_file():
+        files = [output] if output.suffix.lower() == ".pdf" else []
+    elif output.is_dir():
+        files = sorted(output.rglob("*.pdf"))
+    else:
+        files = []
+    if not files:
+        print(f"no PDF artifacts found under {output}", file=sys.stderr)
+        return 1
+
+    invalid: list[Path] = []
+    for path in files:
+        try:
+            with path.open("rb") as stream:
+                header = stream.read(8)
+                stream.seek(max(0, path.stat().st_size - 2048))
+                tail = stream.read()
+        except OSError as exc:
+            print(f"cannot read PDF {path}: {exc}", file=sys.stderr)
+            return 1
+        if not header.startswith(b"%PDF-") or b"%%EOF" not in tail or path.stat().st_size < 16:
+            invalid.append(path)
+    if invalid:
+        for path in invalid:
+            print(f"invalid or incomplete PDF: {path}", file=sys.stderr)
+        return 1
+    print(f"validated {len(files)} PDF artifact(s) under {output}")
+    return 0
+
+
 CHECKS: dict[str, Callable[[Path, Sequence[str]], int]] = {
     "gofmt": gofmt,
+    "latex-pdf": latex_pdf,
     "go-mod-tidy": go_mod_tidy,
     "vim-features": vim_features,
     "vim-load": vim_load,

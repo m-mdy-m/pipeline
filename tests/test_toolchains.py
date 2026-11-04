@@ -42,6 +42,7 @@ class DetectionTests(unittest.TestCase):
     EXPECTED = {
         "python": "python", "node": "node", "go": "go", "rust": "rust", "java-maven": "java",
         "dotnet": "dotnet", "c-make": "c", "c-cmake": "c", "docker": "docker", "vim": "vim",
+        "latex": "latex",
     }
 
     def test_every_fixture_is_detected_as_its_language(self) -> None:
@@ -78,6 +79,28 @@ class PlanTests(unittest.TestCase):
         plan = commands(build_plan(FIXTURES / "vim"))
         self.assertEqual(plan["test"], [["make", "test"]])
         self.assertEqual(len(plan["lint"]), 3)
+
+    def test_latex_plan_uses_project_build_target_and_pdf_validation(self) -> None:
+        plan = commands(build_plan(FIXTURES / "latex"))
+        self.assertEqual(plan["build"], [["make", "build"]])
+        self.assertEqual(plan["test"], [["python", "-m", "pipeline.toolchains.checks", "latex-pdf", "build"]])
+
+    def test_latex_plan_supports_a_single_source_and_engine_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "main.tex").write_text(r"\\documentclass{article}\\begin{document}Hi\\end{document}", encoding="utf-8")
+            plan = commands(build_plan(root, options={"engine": "xelatex", "output": "dist", "source": "main.tex"}))
+            self.assertEqual(plan["build"][0][:2], ["latexmk", "-xelatex"])
+            self.assertIn("-outdir=dist", plan["build"][0])
+            self.assertEqual(plan["test"][0][-1], "dist")
+
+    def test_latex_plan_rejects_invalid_engine_and_escaping_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "main.tex").write_text("source", encoding="utf-8")
+            for options in ({"engine": "tectonic"}, {"output": "../outside"}, {"source": "../main.tex"}):
+                with self.subTest(options=options), self.assertRaises(CIPlanError):
+                    build_plan(root, options=options)
 
     def test_make_check_target_is_preferred_and_cmake_options_apply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

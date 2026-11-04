@@ -6,7 +6,7 @@
 #
 # Variables a project can set:
 #   PIPELINE_HELPER_REF   branch, tag or commit of m-mdy-m/pipeline (default main)
-#   PIPELINE_CI_LANGUAGE  go|node|rust|python|java|dotnet|c|docker|custom|auto.
+#   PIPELINE_CI_LANGUAGE  go|node|rust|python|java|dotnet|c|latex|docker|custom|auto.
 #                         When set, the pipeline:toolchain job runs the engine's
 #                         install/lint/build/test preset for that language.
 #   PIPELINE_CI_IMAGE     image with the language runtime (default python:3.12)

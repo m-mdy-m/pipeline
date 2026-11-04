@@ -73,7 +73,7 @@ pipeline ci                       # install → lint → build → test for the 
 pipeline ci --language go --skip lint
 ~~~
 
-Supported out of the box: Go, Rust, Java (Maven/Gradle), .NET, Node.js (npm/pnpm/yarn/bun), Python, C/C++ (CMake/Make) and Docker. The same command runs in every provider; see [Language toolchains](docs/toolchains.md).
+Supported out of the box: Go, Rust, Java (Maven/Gradle), .NET, Node.js (npm/pnpm/yarn/bun), Python, C/C++ (CMake/Make), LaTeX (pdfLaTeX/XeLaTeX/LuaLaTeX) and Docker. The same command runs in every provider; see [Language toolchains](docs/toolchains.md).
 
 ### Use the composite actions on GitHub
 
@@ -81,7 +81,7 @@ Supported out of the box: Go, Rust, Java (Maven/Gradle), .NET, Node.js (npm/pnpm
 - uses: actions/checkout@v7
 - uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main   # pin a tag or SHA in production
   with:
-    language: auto            # or go, node, rust, java, dotnet, python, c, docker
+    language: auto            # or go, node, rust, java, dotnet, python, c, latex, docker
 ~~~
 
 Language-specific actions (`node-quality`, `go-quality`, `rust-quality`, `java-quality`, `dotnet-quality`, `python-quality`) and `run-pipeline` for your own `pipeline.toml` are described in [Language toolchains](docs/toolchains.md#github-actions). They only install the runtime and call the engine; GitHub is the provider, not a second implementation.
