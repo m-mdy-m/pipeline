@@ -10,25 +10,47 @@ permissions:
   contents: read
 
 jobs:
+  # Required CI coverage: keep the full supported Python-version matrix on Ubuntu.
+  # Pull requests and pushes use this job as the blocking Python check.
   python:
-    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Python ${{ matrix.python-version }} on ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
-    # macOS and Windows runs are informative until they have a clean history.
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python-version: ["3.11", "3.12", "3.13"]
-        experimental: [false]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compile and run the complete unit suite
+        uses: ./.github/actions/python-quality
+        with:
+          python-version: ${{ matrix.python-version }}
+          source-path: src
+          tests-path: tests
+          test-pattern: "test_*.py"
+
+  # Cross-platform compatibility is informative, not a PR merge gate.
+  # Run it on the weekly schedule and on explicit manual dispatches so that
+  # slower hosted macOS/Windows runners cannot abandon the required CI gate.
+  python-cross-platform:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
         include:
           - os: macos-latest
             python-version: "3.12"
-            experimental: true
           - os: windows-latest
             python-version: "3.12"
-            experimental: true
     steps:
       - name: Check out source
         uses: actions/checkout@v7.0.1
