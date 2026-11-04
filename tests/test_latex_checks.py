@@ -29,3 +29,11 @@ class LatexArtifactTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(latex_pdf(Path(tmp), ["build"]), 1)
 
+    def test_accepts_uppercase_pdf_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "build"
+            output.mkdir()
+            (output / "document.PDF").write_bytes(b"%PDF-1.7\\n1 0 obj\\nendobj\\n%%EOF\\n")
+            self.assertEqual(latex_pdf(root, ["build"]), 0)
+
