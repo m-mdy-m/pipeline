@@ -192,6 +192,12 @@ runs:
       with:
         bun-version: ${{ inputs.bun-version }}
 
+    - name: Set up Vim
+      if: steps.detect.outputs.language == 'vim'
+      uses: rhysd/action-setup-vim@v1
+      with:
+        version: ${{ inputs.vim-version }}
+
     - name: Set up LaTeX (English and Persian)
       if: steps.detect.outputs.language == 'latex'
       shell: bash
