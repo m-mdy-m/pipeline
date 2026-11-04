@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$LANGUAGE" in
-            go|node|rust|python|java|dotnet|c|docker|custom) ;;
+            go|node|rust|python|java|dotnet|c|latex|docker|custom) ;;
             *) echo "Unsupported language: $LANGUAGE" >&2; exit 2 ;;
           esac
 
@@ -175,6 +175,20 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Set up LaTeX (English and Persian)
+        if: inputs.language == 'latex'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            latexmk biber \
+            texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+            texlive-xetex texlive-luatex texlive-lang-arabic \
+            texlive-fonts-recommended fonts-liberation fonts-noto fonts-noto-cjk \
+            fonts-vazirmatn fontconfig
+          sudo fc-cache -f >/dev/null 2>&1 || true
 
       - name: Set up Python (project runtime and engine)
         uses: actions/setup-python@v7.1.0

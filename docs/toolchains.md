@@ -35,6 +35,7 @@ Stages run in that order and each depends on the one before it, so a failed `bui
 | `python` | `pyproject.toml`, `setup.py`, `requirements.txt` | `pip install -r requirements.txt` or `pip install -e .` | – | `compileall` on `src/` or `app/` | `pytest` if configured, otherwise `unittest discover` |
 | `vim` | `plugin/*.vim`, `autoload/*.vim` | – | feature check (`+job`, `+timers`), a clean load of every `plugin/*.vim`, and `:helptags` | – | `make test` when the Makefile has a `test:` target, otherwise a headless load of every plugin file |
 | `c` | `CMakeLists.txt`, `Makefile` | – | – | CMake configure + build, or `make` | `ctest`, or `make check` / `make test` when the Makefile has that target |
+| `latex` | root `main.tex`, `*.tex`, or a LaTeX Makefile | Installed by the GitHub action on Ubuntu | – | `make build` when present, otherwise `latexmk` with the selected engine | Validate that generated PDFs are complete |
 | `docker` | `Dockerfile` | – | – | `docker build` | – (no test stage is required) |
 | `custom` | – | you supply every command | | | |
 
@@ -43,7 +44,8 @@ Details worth knowing:
 - Node picks the package manager from the lockfile (`pnpm-lock.yaml`, `bun.lock`/`bun.lockb`, `yarn.lock`, otherwise npm). Yarn Berry (`.yarnrc.yml`) uses `--immutable`. The placeholder `npm init` test script ("no test specified") does not count as a test.
 - Rust adds `--locked` when `Cargo.lock` exists. The lint stage needs the `clippy` component.
 - Java prefers a wrapper (`./mvnw`, `./gradlew`) when it is committed.
-- With `--language auto` (the default) the first match in this order wins: go, rust, java, dotnet, node, python, vim, c, docker. `pipeline detect` lists every match, so a mixed repository can pick explicitly with `--language`.
+- With `--language auto` (the default) the first match in this order wins: go, rust, java, dotnet, node, python, vim, c, latex, docker. `pipeline detect` lists every match, so a mixed repository can pick explicitly with `--language`.
+- The LaTeX preset prefers a project-owned `make build` target. This is the recommended way to build books and bilingual projects because the project Makefile can compile each language with its own engine. Without that target, set `--option source=main.tex` and optionally `--option engine=xelatex`. The `output` option defaults to `build`; the final stage checks for a PDF header and EOF marker, not just a file name. The GitHub action provisions TeX Live and common English/Persian fonts on Ubuntu runners. For GitLab, choose an image that already contains the required TeX packages (for example, a pinned TeX Live image).
 
 ## Overrides and options
 
