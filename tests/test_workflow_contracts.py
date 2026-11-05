@@ -45,6 +45,7 @@ EXTERNAL_USES = re.compile(r"^\s*uses:\s*([^\s#]+)", re.MULTILINE)
 
 
 
+@unittest.skipIf(yaml is None, "PyYAML is not installed")
 class YamllintConsumerPathTests(unittest.TestCase):
     def test_reusable_yamllint_skips_optional_paths_missing_from_consumers(self) -> None:
         workflow = load_yaml(WORKFLOWS / "yamllint.yml")
@@ -61,7 +62,7 @@ class YamllintConsumerPathTests(unittest.TestCase):
             args_file = root / "yamllint-args.txt"
             stub = bindir / "yamllint"
             stub.write_text(
-                "#!/usr/bin/env bash\\nprintf '%s\\\\n' \\\"$@\\\" > \\\"$YAMLLINT_ARGS_FILE\\\"\\n",
+                '#!/usr/bin/env bash\\nprintf "%s\\\\n" "$@" > "$YAMLLINT_ARGS_FILE"\\n',
                 encoding="utf-8",
             )
             stub.chmod(0o755)
