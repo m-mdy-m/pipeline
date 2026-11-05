@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Fixed
+
+- Make the reusable YAML lint workflow ignore optional provider/configuration paths that are absent from consumer repositories.
+- Add a regression test that executes the reusable lint script in a minimal consumer layout.
+
 
 ## [1.2.0] - 2026-11-03
 
