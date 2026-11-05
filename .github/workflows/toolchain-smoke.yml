@@ -15,7 +15,7 @@ permissions:
 jobs:
   auto-detect:
     name: toolchain-quality (${{ matrix.fixture }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.fixture == 'rust' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # TeX Live setup downloads several large packages on cold runners.
     # Give only the LaTeX matrix leg extra headroom for slow Ubuntu mirrors.
     timeout-minutes: ${{ matrix.fixture == 'latex' && 35 || 20 }}
@@ -82,8 +82,8 @@ jobs:
 
   rust-action:
     name: rust-quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
         with:
