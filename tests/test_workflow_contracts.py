@@ -62,7 +62,7 @@ class YamllintConsumerPathTests(unittest.TestCase):
             args_file = root / "yamllint-args.txt"
             stub = bindir / "yamllint"
             stub.write_text(
-                '#!/usr/bin/env bash\\nprintf "%s\\\\n" "$@" > "$YAMLLINT_ARGS_FILE"\\n',
+                '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$YAMLLINT_ARGS_FILE"\n',
                 encoding="utf-8",
             )
             stub.chmod(0o755)
