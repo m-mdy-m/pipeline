@@ -26,12 +26,22 @@ jobs:
       - name: Install yamllint
         run: python -m pip install --disable-pip-version-check "yamllint==1.37.1"
 
-      - name: Lint GitHub and GitLab provider files
+      - name: Lint available GitHub and GitLab provider files
         shell: bash
         run: |
           set -euo pipefail
-          paths=(.github/workflows .gitlab-ci.yml src/pipeline/providers/gitlab/workflows zizmor.yml .github/dependabot.yml examples)
+          candidates=(.github/workflows .gitlab-ci.yml src/pipeline/providers/gitlab/workflows zizmor.yml .github/dependabot.yml examples)
+          paths=()
+          for candidate in "${candidates[@]}"; do
+            if [[ -e "$candidate" ]]; then
+              paths+=("$candidate")
+            fi
+          done
           if [[ -d .github/actions ]]; then
             paths+=(.github/actions)
+          fi
+          if (("${#paths[@]}" == 0)); then
+            echo "No provider YAML paths exist in this repository." >&2
+            exit 1
           fi
           yamllint --config-file .yamllint.yml "${paths[@]}"
