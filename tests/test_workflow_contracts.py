@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -39,6 +41,54 @@ NEW_ACTIONS = (
 )
 LANGUAGE_ACTIONS = ("node-quality", "go-quality", "rust-quality", "java-quality", "dotnet-quality")
 EXTERNAL_USES = re.compile(r"^\s*uses:\s*([^\s#]+)", re.MULTILINE)
+
+
+
+
+class YamllintConsumerPathTests(unittest.TestCase):
+    def test_reusable_yamllint_skips_optional_paths_missing_from_consumers(self) -> None:
+        workflow = load_yaml(WORKFLOWS / "yamllint.yml")
+        steps = workflow["jobs"]["yamllint"]["steps"]
+        lint_step = next(step for step in steps if step.get("name", "").startswith("Lint available"))
+        script = lint_step["run"]
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / "examples").mkdir()
+            bindir = root / "bin"
+            bindir.mkdir()
+            args_file = root / "yamllint-args.txt"
+            stub = bindir / "yamllint"
+            stub.write_text(
+                "#!/usr/bin/env bash\\nprintf '%s\\\\n' \\\"$@\\\" > \\\"$YAMLLINT_ARGS_FILE\\\"\\n",
+                encoding="utf-8",
+            )
+            stub.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH', '')}"
+            env["YAMLLINT_ARGS_FILE"] = str(args_file)
+
+            result = subprocess.run(
+                ["bash", "-euo", "pipefail", "-c", script],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            arguments = args_file.read_text(encoding="utf-8").splitlines()
+            self.assertIn(".github/workflows", arguments)
+            self.assertIn("examples", arguments)
+            for absent in (
+                ".gitlab-ci.yml",
+                "src/pipeline/providers/gitlab/workflows",
+                "zizmor.yml",
+                ".github/dependabot.yml",
+                ".github/actions",
+            ):
+                self.assertNotIn(absent, arguments)
 
 
 class WorkflowInventoryTests(unittest.TestCase):
