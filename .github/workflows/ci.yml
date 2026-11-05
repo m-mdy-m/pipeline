@@ -88,7 +88,9 @@ permissions:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    # Rust currently runs on the known-good Ubuntu 24.04 image while
+    # Ubuntu 26.04 compatibility is validated independently.
+    runs-on: ${{ inputs.language == 'rust' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
