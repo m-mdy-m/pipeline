@@ -27,7 +27,7 @@ class ToolchainCacheContractTests(unittest.TestCase):
         setup = setup.split("    - name: Set up Rust", 1)[0]
         self.assertIn("verify)", setup)
         self.assertIn("install)", setup)
-        self.assertIn("command -v \"latexmk\"", setup)
+        self.assertIn("for tool in latexmk pdflatex biber kpsewhich", setup)
         self.assertIn("kpsewhich chicago-notes.bbx", setup)
 
     def test_reusable_workflow_exposes_the_same_latex_cache_contract(self) -> None:
