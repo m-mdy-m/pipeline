@@ -14,7 +14,7 @@ from typing import Any
 from ..common.hashing import sha256_file as _sha256
 from ..common.io import atomic_write_text as _atomic_write
 
-_TAG_PATTERN = re.compile(r"v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$")
+_TAG_PATTERN = re.compile(r"v\d+\.\d+\.\d+(?:-(?:dev(?:\.\d+)?|(?:alpha|beta|rc)\.\d+))?$")
 _HEADING_PATTERN = re.compile(r"^##\s+\[([^\]]+)\](?:\s|$)")
 
 
