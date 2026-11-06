@@ -69,8 +69,8 @@ class BuildReleaseTests(unittest.TestCase):
             root = Path(tmp)
             changelog = self.write_changelog(
                 root,
-                "# Changelog\\n\\n"
-                "## [0.1.0-dev] - 2026-11-07\\n### Added\\n- development snapshot\\n",
+                "# Changelog\n\n"
+                "## [0.1.0-dev] - 2026-11-07\n### Added\n- development snapshot\n",
             )
             result = prepare_release(
                 changelog_path=changelog,
@@ -88,7 +88,7 @@ class BuildReleaseTests(unittest.TestCase):
     def test_unapproved_prerelease_suffix_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            changelog = self.write_changelog(root, "# Changelog\\n\\n## [0.1.0]\\n- release\\n")
+            changelog = self.write_changelog(root, "# Changelog\n\n## [0.1.0]\n- release\n")
             with self.assertRaises(BuildReleaseError):
                 prepare_release(
                     changelog_path=changelog,
