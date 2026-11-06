@@ -19,7 +19,7 @@ class ToolchainCacheContractTests(unittest.TestCase):
         self.assertIn("latex-packages-file:", action)
         self.assertIn("hashFiles(inputs.latex-packages-file)", action)
         self.assertIn("uses: actions/cache@v4", action)
-        self.assertIn("path: /var/cache/apt/archives", action)
+        self.assertIn("path: /var/cache/apt/archives/*.deb", action)
         self.assertIn("steps.ubuntu-release.outputs.version-id", action)
 
     def test_preinstalled_latex_mode_verifies_without_installing(self) -> None:
