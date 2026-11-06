@@ -45,7 +45,31 @@ Details worth knowing:
 - Rust adds `--locked` when `Cargo.lock` exists. The lint stage needs the `clippy` component.
 - Java prefers a wrapper (`./mvnw`, `./gradlew`) when it is committed.
 - With `--language auto` (the default) the first match in this order wins: go, rust, java, dotnet, node, python, vim, c, latex, docker. `pipeline detect` lists every match, so a mixed repository can pick explicitly with `--language`.
-- The LaTeX preset prefers a project-owned `make build` target when one exists. That target intentionally owns multi-document or bilingual orchestration, including the selection of individual engines. When a Makefile build target is present, `source` and `engine` options are not used; put those choices in the Makefile. Without that target, set `--option source=main.tex` and optionally `--option engine=xelatex`. The `output` option defaults to `build`; the final stage checks for a PDF header and EOF marker, not just a file name. The GitHub action provisions TeX Live, the Arabic-language packages, `texlive-bibtex-extra` (including BibLaTeX Chicago Notes), `texlive-science` (algorithm and pseudocode environments), and common English/Persian fonts on Ubuntu runners. It verifies that `biblatex.sty`, `chicago-notes.bbx` and `chicago-notes.cbx`, `algorithm.sty` and `algpseudocode.sty` are discoverable before building. For GitLab, choose an image that already contains the required TeX packages, including the BibTeX extra and science collections (for example, a pinned TeX Live image).
+- The LaTeX preset prefers a project-owned `make build` target when one exists. That target intentionally owns multi-document or bilingual orchestration, including the selection of individual engines. When a Makefile build target is present, `source` and `engine` options are not used; put those choices in the Makefile. Without that target, set `--option source=main.tex` and optionally `--option engine=xelatex`. The `output` option defaults to `build`; the final stage checks for a PDF header and EOF marker, not just a file name. The GitHub action provisions TeX Live and verifies that `biblatex.sty`, Chicago Notes, `algorithm.sty` and `algpseudocode.sty` are discoverable before building.
+
+## Toolchain caches and lock files
+
+GitHub-hosted runners are fresh machines for every job. Pipeline can reuse downloaded packages, but it cannot preserve an installed TeX Live tree between hosted jobs.
+
+- Node.js package caches are keyed by the detected package-manager lockfile.
+- The `toolchain-quality` action can cache pip downloads when `python-cache-dependency-path` names a requirements or project metadata file.
+- For LaTeX, pass `latex-packages-file` with one Debian package (or `package=version`) per line. Pipeline caches the downloaded `.deb` archives by runner OS, architecture and manifest content. Changing the package manifest invalidates that cache. Package indexes are still refreshed and dpkg still installs packages on a fresh hosted runner.
+- `latex-setup-mode: verify` checks the required executables and TeX packages without invoking apt. Use it only when the runner image already contains the complete toolchain. A persistent self-hosted runner can therefore skip package installation; do not send untrusted public pull-request code to a persistent runner with secrets or access to sensitive networks.
+
+Example:
+
+~~~yaml
+- uses: m-mdy-m/pipeline/.github/actions/toolchain-quality@main
+  with:
+    language: latex
+    cache: "true"
+    latex-packages-file: .ci/locks/texlive-packages.ubuntu-24.04.lock
+    python-cache-dependency-path: workspace/pyproject.toml
+    # Set to verify only on a runner that already has the locked toolchain.
+    latex-setup-mode: install
+~~~
+
+The first cold hosted run still has to download and install TeX Live. Subsequent runs can reuse matching package archives, while a pre-provisioned persistent runner can use `verify` to avoid that installation entirely. A sub-10-second toolchain setup is not guaranteed on GitHub-hosted runners; the actual build and tests take additional time.
 
 ## Overrides and options
 
