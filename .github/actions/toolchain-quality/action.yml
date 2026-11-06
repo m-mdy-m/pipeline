@@ -212,7 +212,8 @@ runs:
       with:
         version: ${{ inputs.vim-version }}
 
-    - name: Prepare TeX package archive cache
+    - name: Detect Ubuntu release and prepare TeX package archive cache
+      id: ubuntu-release
       if: steps.detect.outputs.language == 'latex' && inputs.cache == 'true' && inputs.latex-setup-mode == 'install' && inputs.latex-packages-file != '' && hashFiles(inputs.latex-packages-file) != ''
       shell: bash
       env:
@@ -220,6 +221,8 @@ runs:
       run: |
         set -euo pipefail
         test -f "$LATEX_PACKAGES_FILE" || { echo "LaTeX package manifest not found: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+        . /etc/os-release
+        echo "version-id=${VERSION_ID:-unknown}" >> "$GITHUB_OUTPUT"
         sudo install -d -m 0755 /var/cache/apt/archives/partial
         sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
 
@@ -228,7 +231,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: /var/cache/apt/archives
-        key: pipeline-texlive-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(inputs.latex-packages-file) }}
+        key: pipeline-texlive-${{ runner.os }}-${{ runner.arch }}-${{ steps.ubuntu-release.outputs.version-id }}-${{ hashFiles(inputs.latex-packages-file) }}
 
     - name: Set up LaTeX (English and Persian)
       if: steps.detect.outputs.language == 'latex'
