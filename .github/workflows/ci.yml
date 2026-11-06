@@ -82,6 +82,26 @@ on:
         required: false
         type: string
         default: "main"
+      cache:
+        description: "Enable package-manager and toolchain caches when a lock or dependency file is supplied"
+        required: false
+        type: boolean
+        default: true
+      python-cache-dependency-path:
+        description: "Workspace-relative requirements or project metadata file used to key pip cache"
+        required: false
+        type: string
+        default: ""
+      latex-setup-mode:
+        description: "install provisions TeX Live; verify checks a preinstalled toolchain"
+        required: false
+        type: string
+        default: install
+      latex-packages-file:
+        description: "Workspace-relative apt package manifest (one package or package=version per line)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -104,12 +124,17 @@ jobs:
           TEST_COMMAND: ${{ inputs.test-command }}
           PIPELINE_TASK: ${{ inputs.pipeline-task }}
           TOOLCHAIN_PRESET: ${{ inputs.toolchain-preset }}
+          LATEX_SETUP_MODE: ${{ inputs.latex-setup-mode }}
         shell: bash
         run: |
           set -euo pipefail
           case "$LANGUAGE" in
             go|node|rust|python|java|dotnet|c|latex|docker|custom) ;;
             *) echo "Unsupported language: $LANGUAGE" >&2; exit 2 ;;
+          esac
+          case "$LATEX_SETUP_MODE" in
+            install|verify) ;;
+            *) echo "latex-setup-mode must be install or verify" >&2; exit 2 ;;
           esac
 
           if [ -n "$PIPELINE_TASK" ] && [ "$TOOLCHAIN_PRESET" = "true" ]; then
@@ -178,20 +203,58 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
+      - name: Prepare TeX package archive cache
+        if: inputs.language == 'latex' && inputs.cache && inputs.latex-setup-mode == 'install' && inputs.latex-packages-file != '' && hashFiles(inputs.latex-packages-file) != ''
+        shell: bash
+        env:
+          LATEX_PACKAGES_FILE: ${{ inputs.latex-packages-file }}
+        run: |
+          set -euo pipefail
+          test -f "$LATEX_PACKAGES_FILE" || { echo "LaTeX package manifest not found: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+          sudo install -d -m 0755 /var/cache/apt/archives/partial
+          sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
+
+      - name: Cache TeX package archives
+        if: inputs.language == 'latex' && inputs.cache && inputs.latex-setup-mode == 'install' && inputs.latex-packages-file != '' && hashFiles(inputs.latex-packages-file) != ''
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: pipeline-texlive-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(inputs.latex-packages-file) }}
+
       - name: Set up LaTeX (English and Persian)
         if: inputs.language == 'latex'
         shell: bash
+        env:
+          LATEX_SETUP_MODE: ${{ inputs.latex-setup-mode }}
+          LATEX_PACKAGES_FILE: ${{ inputs.latex-packages-file }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            latexmk biber \
-            texlive-latex-base texlive-latex-recommended texlive-latex-extra \
-            texlive-bibtex-extra texlive-science \
-            texlive-xetex texlive-luatex texlive-lang-arabic \
-            texlive-fonts-recommended fonts-liberation fonts-noto \
-            fonts-vazirmatn fontconfig
-          sudo fc-cache -f >/dev/null 2>&1 || true
+          case "$LATEX_SETUP_MODE" in
+            install)
+              if [[ -n "$LATEX_PACKAGES_FILE" ]]; then
+                [[ -f "$LATEX_PACKAGES_FILE" ]] || { echo "LaTeX package manifest not found: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+                mapfile -t packages < <(sed 's/#.*$//' "$LATEX_PACKAGES_FILE" | awk 'NF')
+                (("${#packages[@]}" > 0)) || { echo "LaTeX package manifest is empty: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+                for package in "${packages[@]}"; do
+                  [[ "$package" =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*(=[^[:space:]]+)?$ ]] || {
+                    echo "Invalid apt package entry in $LATEX_PACKAGES_FILE: $package" >&2
+                    exit 2
+                  }
+                done
+              else
+                packages=(latexmk biber texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-bibtex-extra texlive-science texlive-xetex texlive-luatex texlive-lang-arabic texlive-fonts-recommended fonts-liberation fonts-noto fonts-vazirmatn fontconfig)
+              fi
+              sudo apt-get update -qq
+              sudo apt-get install -y --no-install-recommends "${packages[@]}"
+              sudo fc-cache -f >/dev/null 2>&1 || true
+              ;;
+            verify)
+              echo "Using the preinstalled LaTeX toolchain; package installation is disabled."
+              ;;
+          esac
+          for tool in latexmk pdflatex biber kpsewhich; do
+            command -v "$tool" >/dev/null || { echo "Required LaTeX tool is missing: $tool" >&2; exit 1; }
+          done
           kpsewhich biblatex.sty
           kpsewhich chicago-notes.bbx
           kpsewhich chicago-notes.cbx
@@ -202,6 +265,8 @@ jobs:
         uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
+          cache: ${{ inputs.cache && inputs.python-cache-dependency-path != '' && hashFiles(inputs.python-cache-dependency-path) != '' && 'pip' || '' }}
+          cache-dependency-path: ${{ inputs.python-cache-dependency-path }}
 
       - name: Check out the shared pipeline engine
         uses: actions/checkout@v7
