@@ -45,6 +45,7 @@ jobs:
         uses: ./.github/actions/toolchain-quality
         with:
           working-directory: examples/toolchains/${{ matrix.fixture }}
+          latex-packages-file: examples/toolchains/latex/texlive-packages.ubuntu-24.04.lock
 
       - name: Require the expected language and a successful run
         env:
