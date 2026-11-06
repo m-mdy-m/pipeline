@@ -64,6 +64,40 @@ class BuildReleaseTests(unittest.TestCase):
                     commit_sha="a" * 40,
                 )
 
+    def test_dev_prerelease_tag_uses_its_exact_changelog_section(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            changelog = self.write_changelog(
+                root,
+                "# Changelog\\n\\n"
+                "## [0.1.0-dev] - 2026-11-07\\n### Added\\n- development snapshot\\n",
+            )
+            result = prepare_release(
+                changelog_path=changelog,
+                output_directory=root / "out",
+                ref_type="tag",
+                ref_name="v0.1.0-dev",
+                commit_sha="a" * 40,
+            )
+            notes = (root / "out" / "release-notes.md").read_text(encoding="utf-8")
+            self.assertEqual(result["version"], "0.1.0-dev")
+            self.assertEqual(result["release_tag"], "v0.1.0-dev")
+            self.assertTrue(result["prerelease"])
+            self.assertIn("- development snapshot", notes)
+
+    def test_unapproved_prerelease_suffix_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            changelog = self.write_changelog(root, "# Changelog\\n\\n## [0.1.0]\\n- release\\n")
+            with self.assertRaises(BuildReleaseError):
+                prepare_release(
+                    changelog_path=changelog,
+                    output_directory=root / "out",
+                    ref_type="tag",
+                    ref_name="v0.1.0-preview.1",
+                    commit_sha="a" * 40,
+                )
+
     def test_branch_dry_run_uses_unreleased_section(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
