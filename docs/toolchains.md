@@ -53,7 +53,7 @@ GitHub-hosted runners are fresh machines for every job. Pipeline can reuse downl
 
 - Node.js package caches are keyed by the detected package-manager lockfile.
 - The `toolchain-quality` action can cache pip downloads when `python-cache-dependency-path` names a requirements or project metadata file.
-- For LaTeX, pass `latex-packages-file` with one Debian package (or `package=version`) per line. Pipeline caches the downloaded `.deb` archives by runner OS, architecture and manifest content. Changing the package manifest invalidates that cache. Package indexes are still refreshed and dpkg still installs packages on a fresh hosted runner.
+- For LaTeX, pass `latex-packages-file` with one Debian package (or `package=version`) per line. Pipeline caches the downloaded `.deb` archives by runner OS, architecture, Ubuntu release and manifest content. Changing the Ubuntu release or package manifest invalidates that cache. Package indexes are still refreshed and dpkg still installs packages on a fresh hosted runner.
 - `latex-setup-mode: verify` checks the required executables and TeX packages without invoking apt. Use it only when the runner image already contains the complete toolchain. A persistent self-hosted runner can therefore skip package installation; do not send untrusted public pull-request code to a persistent runner with secrets or access to sensitive networks.
 
 Example:
@@ -63,7 +63,7 @@ Example:
   with:
     language: latex
     cache: "true"
-    latex-packages-file: .ci/locks/texlive-packages.ubuntu-24.04.lock
+    latex-packages-file: .ci/locks/texlive-packages.ubuntu.lock
     python-cache-dependency-path: workspace/pyproject.toml
     # Set to verify only on a runner that already has the locked toolchain.
     latex-setup-mode: install
