@@ -20,6 +20,7 @@ class ToolchainCacheContractTests(unittest.TestCase):
         self.assertIn("hashFiles(inputs.latex-packages-file)", action)
         self.assertIn("uses: actions/cache@v4", action)
         self.assertIn("path: /var/cache/apt/archives", action)
+        self.assertIn("steps.ubuntu-release.outputs.version-id", action)
 
     def test_preinstalled_latex_mode_verifies_without_installing(self) -> None:
         action = ACTION.read_text(encoding="utf-8")
@@ -35,6 +36,7 @@ class ToolchainCacheContractTests(unittest.TestCase):
         self.assertIn("latex-setup-mode:", workflow)
         self.assertIn("latex-packages-file:", workflow)
         self.assertIn("hashFiles(inputs.latex-packages-file)", workflow)
+        self.assertIn("steps.ubuntu-release.outputs.version-id", workflow)
         self.assertIn("cache-dependency-path: ${{ inputs.python-cache-dependency-path }}", workflow)
 
     def test_documentation_distinguishes_hosted_cache_from_persistent_runners(self) -> None:
