@@ -39,9 +39,21 @@ inputs:
     required: false
     default: latest
   cache:
-    description: Cache npm, pnpm or yarn dependencies when a lockfile exists (true or false).
+    description: Cache package-manager downloads and locked toolchain artifacts when supported (true or false).
     required: false
     default: "true"
+  python-cache-dependency-path:
+    description: Optional workspace-relative requirements or project metadata file used to key the pip cache.
+    required: false
+    default: ""
+  latex-setup-mode:
+    description: install installs TeX Live packages; verify checks a preinstalled toolchain without using apt.
+    required: false
+    default: install
+  latex-packages-file:
+    description: Optional workspace-relative apt package manifest (one package or package=version per line).
+    required: false
+    default: ""
   mode:
     description: ci runs install/lint/build/test; bench runs the language's benchmarks and compares them.
     required: false
@@ -140,6 +152,8 @@ runs:
       uses: actions/setup-python@v7.1.0
       with:
         python-version: ${{ inputs.python-version }}
+        cache: ${{ inputs.cache == 'true' && inputs.python-cache-dependency-path != '' && hashFiles(inputs.python-cache-dependency-path) != '' && 'pip' || '' }}
+        cache-dependency-path: ${{ inputs.python-cache-dependency-path }}
 
     - name: Detect the project language
       id: detect
@@ -198,26 +212,74 @@ runs:
       with:
         version: ${{ inputs.vim-version }}
 
+    - name: Prepare TeX package archive cache
+      if: steps.detect.outputs.language == 'latex' && inputs.cache == 'true' && inputs.latex-setup-mode == 'install' && inputs.latex-packages-file != '' && hashFiles(inputs.latex-packages-file) != ''
+      shell: bash
+      env:
+        LATEX_PACKAGES_FILE: ${{ inputs.latex-packages-file }}
+      run: |
+        set -euo pipefail
+        test -f "$LATEX_PACKAGES_FILE" || { echo "LaTeX package manifest not found: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+        sudo install -d -m 0755 /var/cache/apt/archives/partial
+        sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
+
+    - name: Cache TeX package archives
+      if: steps.detect.outputs.language == 'latex' && inputs.cache == 'true' && inputs.latex-setup-mode == 'install' && inputs.latex-packages-file != '' && hashFiles(inputs.latex-packages-file) != ''
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt/archives
+        key: pipeline-texlive-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(inputs.latex-packages-file) }}
+
     - name: Set up LaTeX (English and Persian)
       if: steps.detect.outputs.language == 'latex'
       shell: bash
+      env:
+        LATEX_SETUP_MODE: ${{ inputs.latex-setup-mode }}
+        LATEX_PACKAGES_FILE: ${{ inputs.latex-packages-file }}
       run: |
         set -euo pipefail
-        if ! command -v apt-get >/dev/null 2>&1; then
-          echo "The LaTeX preset currently requires a Debian/Ubuntu runner." >&2
-          exit 2
-        fi
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends \
-          latexmk biber \
-          texlive-latex-base texlive-latex-recommended texlive-latex-extra \
-          texlive-bibtex-extra texlive-science \
-          texlive-xetex texlive-luatex texlive-lang-arabic \
-          texlive-fonts-recommended fonts-liberation fonts-noto \
-          fonts-vazirmatn fontconfig
-        sudo fc-cache -f >/dev/null 2>&1 || true
-        # Chicago Notes is used by academic publications in addition to the
-        # base BibLaTeX package. Fail during setup, not during document builds.
+        case "$LATEX_SETUP_MODE" in
+          install)
+            if ! command -v apt-get >/dev/null 2>&1; then
+              echo "The LaTeX install mode requires a Debian/Ubuntu runner; use verify on a pre-provisioned runner." >&2
+              exit 2
+            fi
+            if [[ -n "$LATEX_PACKAGES_FILE" ]]; then
+              [[ -f "$LATEX_PACKAGES_FILE" ]] || { echo "LaTeX package manifest not found: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+              mapfile -t packages < <(sed 's/#.*$//' "$LATEX_PACKAGES_FILE" | awk 'NF')
+              (("${#packages[@]}" > 0)) || { echo "LaTeX package manifest is empty: $LATEX_PACKAGES_FILE" >&2; exit 2; }
+              for package in "${packages[@]}"; do
+                [[ "$package" =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*(=[^[:space:]]+)?$ ]] || {
+                  echo "Invalid apt package entry in $LATEX_PACKAGES_FILE: $package" >&2
+                  exit 2
+                }
+              done
+            else
+              packages=(
+                latexmk biber
+                texlive-latex-base texlive-latex-recommended texlive-latex-extra
+                texlive-bibtex-extra texlive-science
+                texlive-xetex texlive-luatex texlive-lang-arabic
+                texlive-fonts-recommended fonts-liberation fonts-noto
+                fonts-vazirmatn fontconfig
+              )
+            fi
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
+            sudo fc-cache -f >/dev/null 2>&1 || true
+            ;;
+          verify)
+            echo "Using the preinstalled LaTeX toolchain; package installation is disabled."
+            ;;
+          *)
+            echo "latex-setup-mode must be install or verify, not: $LATEX_SETUP_MODE" >&2
+            exit 2
+            ;;
+        esac
+        for tool in latexmk pdflatex biber kpsewhich; do
+          command -v "$tool" >/dev/null || { echo "Required LaTeX tool is missing: $tool" >&2; exit 1; }
+        done
+        # Validate packages needed by the shared academic-document preset.
         kpsewhich biblatex.sty
         kpsewhich chicago-notes.bbx
         kpsewhich chicago-notes.cbx
@@ -225,7 +287,6 @@ runs:
         kpsewhich algpseudocode.sty
         latexmk -v
         pdflatex --version | head -1
-        xelatex --version | head -1
 
     - name: Set up Rust
       if: steps.detect.outputs.language == 'rust'
