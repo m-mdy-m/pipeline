@@ -74,7 +74,7 @@ on:
         description: "Pinned ORAS CLI version installed by setup-oras"
         required: false
         type: string
-        default: "1.3.5"
+        default: "1.3.4"
       dry-run:
         description: "Build and verify package metadata without authenticating or pushing to GHCR"
         required: false
@@ -90,6 +90,8 @@ jobs:
     name: Build and publish OCI package / ${{ matrix.id }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}/.pipeline/src
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.build-matrix-json) }}
@@ -160,7 +162,7 @@ jobs:
 
       - name: Set up ORAS
         if: inputs.dry-run != true
-        uses: oras-project/setup-oras@v2
+        uses: oras-project/setup-oras@v2.0.2
         with:
           version: ${{ inputs.oras-version }}
 
