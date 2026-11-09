@@ -9,6 +9,7 @@ from .artifacts import (
     OciArtifactError,
     build_publication_receipt,
     prepare_package_artifact,
+    stage_package_artifact,
     validate_target_matrix,
     verify_package_artifact,
 )
@@ -38,6 +39,12 @@ def main(argv: list[str] | None = None) -> int:
     verify = commands.add_parser("verify", help="verify one package file against its metadata")
     verify.add_argument("--metadata", required=True)
     verify.add_argument("--artifact", required=True)
+
+    stage = commands.add_parser("stage", help="copy and re-verify immutable package bytes")
+    stage.add_argument("--metadata", required=True)
+    stage.add_argument("--artifact", required=True)
+    stage.add_argument("--output-directory", required=True)
+    stage.add_argument("--expected-metadata-sha256", required=True)
 
     matrix = commands.add_parser("validate-matrix", help="validate a JSON target matrix")
     matrix.add_argument("--value", required=True)
@@ -71,6 +78,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "verify":
             result = verify_package_artifact(args.metadata, args.artifact)
+        elif args.command == "stage":
+            result = stage_package_artifact(
+                metadata_path=args.metadata,
+                artifact_path=args.artifact,
+                output_directory=args.output_directory,
+                expected_metadata_sha256=args.expected_metadata_sha256,
+            )
         elif args.command == "validate-matrix":
             result = {"targets": validate_target_matrix(args.value)}
         elif args.command == "validate-version":
