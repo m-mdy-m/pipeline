@@ -147,6 +147,7 @@ class OciPackageArtifactTests(unittest.TestCase):
             expected_metadata_sha256=prepared["metadata_sha256"],
         )
         staged_path = Path(staged["artifact_path"])
+        self.staged_paths.append(staged_path)
         self.assertTrue(staged["staged"])
         self.assertEqual(staged_path.read_bytes(), self.payload.read_bytes())
         self.assertEqual(staged["artifact_sha256"], prepared["artifact_sha256"])
