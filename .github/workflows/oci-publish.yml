@@ -417,13 +417,13 @@ jobs:
           PACKAGE_VERSION: ${{ steps.validate.outputs.version }}
           SOURCE_REPOSITORY_INPUT: ${{ inputs.source-repository }}
           SOURCE_REVISION_INPUT: ${{ inputs.source-revision }}
-          ARTIFACT_MEDIA_TYPE: ${{ inputs.artifact-media-type }}
+          ARTIFACT_MEDIA_TYPE: ${{ matrix.artifact_media_type || inputs.artifact-media-type }}
           ARTIFACT_PATH: ${{ steps.stage.outputs.artifact_path }}
           METADATA_PATH: ${{ steps.stage.outputs.metadata_path }}
           PACKAGE_TAG: ${{ steps.package.outputs.tag }}
         run: |
           set -euo pipefail
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           reference="ghcr.io/$owner/$PACKAGE_NAME:$PACKAGE_TAG"
           source_repository="$SOURCE_REPOSITORY_INPUT"
           if [[ -z "$source_repository" ]]; then source_repository="https://github.com/$GITHUB_REPOSITORY"; fi
