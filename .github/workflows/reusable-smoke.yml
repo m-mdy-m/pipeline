@@ -134,7 +134,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      packages: write
     name: Reusable OCI package preparation without GHCR push
     uses: ./.github/workflows/oci-publish.yml
     with:
