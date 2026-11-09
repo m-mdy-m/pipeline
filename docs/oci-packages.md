@@ -49,6 +49,16 @@ python -m pipeline.oci.cli verify \
   --artifact dist/kernel-linux-amd64.tar.gz
 ~~~
 
+Stage a private read-only copy after optional package tests. The command rejects any post-prepare change to the metadata descriptor or payload:
+
+~~~sh
+python -m pipeline.oci.cli stage \
+  --metadata .pipeline/oci/package-metadata.json \
+  --artifact dist/kernel-linux-amd64.tar.gz \
+  --output-directory .pipeline/oci/staged \
+  --expected-metadata-sha256 "$PACKAGE_METADATA_SHA256"
+~~~
+
 For a multi-target release, each target produces its own descriptor and tag. The default tag form is `<version>-<target-id>`; a universal target (`any/any/none`) uses the version without a target suffix. OCI tags are not the integrity boundary: consumers must record the returned manifest digest.
 
 ## Publish to GHCR
