@@ -28,6 +28,7 @@ NEW_WORKFLOWS = (
     "ci-main.yml",
     "toolchain-smoke.yml",
     "benchmark-regression.yml",
+    "oci-publish.yml",
 )
 NEW_ACTIONS = (
     "python-quality",
