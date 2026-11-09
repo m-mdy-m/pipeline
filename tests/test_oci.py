@@ -116,7 +116,7 @@ class OciPackageArtifactTests(unittest.TestCase):
             {"id": "linux-amd64", "os": "ubuntu-24.04", "target_os": "linux",
              "architecture": "amd64", "abi": "gnu"},
             {"id": "linux-amd64", "os": "ubuntu-24.04", "target_os": "linux",
-             "architecture": "amd64", "abi": "musl"},
+             "architecture": "x86_64", "abi": "musl"},
         ]})
         with self.assertRaisesRegex(OciArtifactError, "duplicate target matrix id"):
             validate_target_matrix(duplicate)
