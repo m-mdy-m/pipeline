@@ -13,6 +13,7 @@ from pipeline.oci.artifacts import (  # noqa: E402
     OciArtifactError,
     build_publication_receipt,
     prepare_package_artifact,
+    stage_package_artifact,
     validate_target_matrix,
     verify_package_artifact,
 )
@@ -136,6 +137,52 @@ class OciPackageArtifactTests(unittest.TestCase):
         self.prepare()
         with self.assertRaisesRegex(OciArtifactError, "refusing to overwrite"):
             self.prepare()
+
+    def test_stage_copies_and_reverifies_read_only_package_bytes(self) -> None:
+        prepared = self.prepare()
+        staged = stage_package_artifact(
+            metadata_path=prepared["metadata_path"],
+            artifact_path=self.payload,
+            output_directory=self.root / "staged",
+            expected_metadata_sha256=prepared["metadata_sha256"],
+        )
+        staged_path = Path(staged["artifact_path"])
+        self.assertTrue(staged["staged"])
+        self.assertEqual(staged_path.read_bytes(), self.payload.read_bytes())
+        self.assertEqual(staged["artifact_sha256"], prepared["artifact_sha256"])
+        self.assertEqual(staged["metadata_sha256"], prepared["metadata_sha256"])
+        self.assertEqual(
+            verify_package_artifact(prepared["metadata_path"], staged_path)["sha256"],
+            prepared["artifact_sha256"],
+        )
+        self.assertEqual(staged_path.stat().st_mode & 0o222, 0)
+
+    def test_stage_rejects_metadata_mutated_after_preparation(self) -> None:
+        prepared = self.prepare()
+        metadata_path = Path(prepared["metadata_path"])
+        metadata_path.write_text(metadata_path.read_text(encoding="utf-8") + " ", encoding="utf-8")
+        with self.assertRaisesRegex(OciArtifactError, "metadata changed after preparation"):
+            stage_package_artifact(
+                metadata_path=metadata_path,
+                artifact_path=self.payload,
+                output_directory=self.root / "staged",
+                expected_metadata_sha256=prepared["metadata_sha256"],
+            )
+
+    def test_stage_rejects_artifact_mutated_after_preparation(self) -> None:
+        prepared = self.prepare()
+        self.payload.write_bytes(b"mutated after package test\\n")
+        with self.assertRaisesRegex(OciArtifactError, "artifact size mismatch|artifact SHA-256 mismatch"):
+            stage_package_artifact(
+                metadata_path=prepared["metadata_path"],
+                artifact_path=self.payload,
+                output_directory=self.root / "staged",
+                expected_metadata_sha256=prepared["metadata_sha256"],
+            )
+
+    def test_semver_rejects_leading_zero_numeric_prerelease_identifiers(self) -> None:
+        with self.assertRaisesRegex(OciArtifactError, "leading zeroes"):
+            self.prepare(version="1.2.3-rc.01")
 
     def test_publication_receipt_uses_the_immutable_manifest_digest(self) -> None:
         prepared = self.prepare()
