@@ -48,6 +48,12 @@ def _token(value: object, field: str) -> str:
 def _version(value: object) -> str:
     if not isinstance(value, str) or not _VERSION_RE.fullmatch(value):
         raise OciArtifactError("version must be a valid SemVer MAJOR.MINOR.PATCH value")
+    semantic_part = value.split("+", 1)[0]
+    if "-" in semantic_part:
+        prerelease = semantic_part.split("-", 1)[1]
+        for identifier in prerelease.split("."):
+            if identifier.isdigit() and len(identifier) > 1 and identifier.startswith("0"):
+                raise OciArtifactError("numeric SemVer prerelease identifiers must not contain leading zeroes")
     return value
 
 
@@ -309,6 +315,105 @@ def verify_package_artifact(metadata_path: str | Path, artifact_path: str | Path
         "verified": True,
     }
 
+
+
+def stage_package_artifact(
+    *,
+    metadata_path: str | Path,
+    artifact_path: str | Path,
+    output_directory: str | Path,
+    expected_metadata_sha256: str,
+) -> dict[str, Any]:
+    """Copy a verified package to a private, read-only staging directory.
+
+    The descriptor digest is checked before and after copying. The staged bytes
+    are hashed before atomic publication so a post-test mutation of the build
+    output can never be published under stale metadata.
+    """
+    descriptor_path = Path(metadata_path)
+    if descriptor_path.is_symlink() or not descriptor_path.is_file():
+        raise OciArtifactError("metadata path must be a regular file")
+    if not isinstance(expected_metadata_sha256, str) or not _DIGEST_RE.fullmatch(expected_metadata_sha256):
+        raise OciArtifactError("expected metadata SHA-256 must be a lowercase 64-character digest")
+
+    try:
+        descriptor_bytes = descriptor_path.read_bytes()
+    except OSError as exc:
+        raise OciArtifactError(f"cannot read package metadata: {exc}") from exc
+    descriptor_digest = hashlib.sha256(descriptor_bytes).hexdigest()
+    if descriptor_digest != expected_metadata_sha256:
+        raise OciArtifactError("package metadata changed after preparation")
+    try:
+        metadata = json.loads(descriptor_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise OciArtifactError(f"package metadata is not valid UTF-8 JSON: {exc}") from exc
+    metadata = _validate_metadata(metadata)
+
+    source = Path(artifact_path)
+    if source.is_symlink():
+        raise OciArtifactError("artifact must not be a symbolic link")
+    try:
+        source_mode = source.stat().st_mode
+    except OSError as exc:
+        raise OciArtifactError(f"cannot stat package artifact: {exc}") from exc
+    if not stat.S_ISREG(source_mode):
+        raise OciArtifactError("artifact must be a regular file")
+    if source.name != metadata["artifact"]["name"]:
+        raise OciArtifactError("artifact filename does not match package metadata")
+
+    destination_directory_path = Path(output_directory)
+    if destination_directory_path.is_symlink():
+        raise OciArtifactError("staging output directory must not be a symbolic link")
+    if destination_directory_path.exists() and not destination_directory_path.is_dir():
+        raise OciArtifactError("staging output path must be a directory")
+    destination_directory_path.mkdir(parents=True, exist_ok=True)
+    destination = destination_directory_path / metadata["artifact"]["name"]
+    if destination.exists() or destination.is_symlink():
+        raise OciArtifactError("refusing to overwrite an existing staged package")
+
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination_directory_path)
+    temporary = Path(temporary_name)
+    published = False
+    try:
+        with os.fdopen(descriptor, "wb") as writer, source.open("rb") as reader:
+            shutil.copyfileobj(reader, writer, length=1024 * 1024)
+            writer.flush()
+            os.fsync(writer.fileno())
+
+        actual_size = temporary.stat().st_size
+        actual_digest = _sha256_file(temporary)
+        expected_artifact = metadata["artifact"]
+        if actual_size != expected_artifact["size"]:
+            raise OciArtifactError(
+                f"artifact size mismatch while staging: expected {expected_artifact['size']}, got {actual_size}"
+            )
+        if actual_digest != expected_artifact["sha256"]:
+            raise OciArtifactError("artifact SHA-256 mismatch while staging")
+
+        if hashlib.sha256(descriptor_path.read_bytes()).hexdigest() != expected_metadata_sha256:
+            raise OciArtifactError("package metadata changed while staging")
+        temporary.chmod(0o444)
+        os.replace(temporary, destination)
+        published = True
+
+        if hashlib.sha256(descriptor_path.read_bytes()).hexdigest() != expected_metadata_sha256:
+            raise OciArtifactError("package metadata changed before staging completed")
+        return {
+            "artifact_path": str(destination.resolve()),
+            "artifact_name": destination.name,
+            "artifact_size": actual_size,
+            "artifact_sha256": actual_digest,
+            "metadata_sha256": descriptor_digest,
+            "staged": True,
+        }
+    except Exception:
+        try:
+            temporary.unlink(missing_ok=True)
+            if published:
+                destination.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def build_publication_receipt(
