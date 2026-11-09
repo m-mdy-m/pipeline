@@ -114,7 +114,7 @@ class OciPackageArtifactTests(unittest.TestCase):
 
         duplicate = json.dumps({"include": [
             {"id": "linux-amd64", "os": "ubuntu-24.04", "target_os": "linux",
-             "architecture": "amd64", "abi": "gnu"},
+             "architecture": "x86_64", "abi": "gnu"},
             {"id": "linux-amd64", "os": "ubuntu-24.04", "target_os": "linux",
              "architecture": "x86_64", "abi": "musl"},
         ]})
