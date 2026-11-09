@@ -107,7 +107,7 @@ class OciPackageArtifactTests(unittest.TestCase):
             {"id": "linux-amd64", "os": "ubuntu-24.04", "target_os": "linux",
              "architecture": "x86_64", "abi": "gnu"},
             {"id": "windows-amd64", "os": "windows-2025", "target_os": "windows",
-             "architecture": "amd64", "abi": "ucrt64"},
+             "architecture": "x86_64", "abi": "ucrt64"},
         ]})
         result = validate_target_matrix(value)
         self.assertEqual([entry["id"] for entry in result], ["linux-amd64", "windows-amd64"])
