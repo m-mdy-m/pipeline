@@ -14,6 +14,7 @@ docs-check:
 	@test -s docs/providers.md
 	@test -s docs/benchmarking.md
 	@test -s docs/releases.md
+	@test -s docs/oci-packages.md
 	@test -s docs/toolchains.md
 	@test -s docs/development.md
 	@test -s examples/README.md
