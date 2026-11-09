@@ -74,7 +74,7 @@ on:
         description: "Pinned ORAS CLI version installed by setup-oras"
         required: false
         type: string
-        default: "1.3.4"
+        default: "1.3.5"
       dry-run:
         description: "Build and verify package metadata without authenticating or pushing to GHCR"
         required: false
@@ -162,7 +162,7 @@ jobs:
 
       - name: Set up ORAS
         if: inputs.dry-run != true
-        uses: oras-project/setup-oras@v2.0.2
+        uses: oras-project/setup-oras@v2.0.3
         with:
           version: ${{ inputs.oras-version }}
 
@@ -372,6 +372,35 @@ jobs:
           with Path(sys.argv[2]).open("a", encoding="utf-8") as output:
               output.write("\n".join(summary))
           PY
+
+      - name: Pull the published package by immutable digest
+        if: inputs.dry-run != true
+        shell: bash
+        env:
+          RECEIPT_PATH: ${{ runner.temp }}/pipeline-oci-publication/receipt.json
+          METADATA_PATH: ${{ steps.package.outputs.metadata_path }}
+          PULL_DIRECTORY: ${{ runner.temp }}/pipeline-oci-roundtrip
+        run: |
+          set -euo pipefail
+          immutable_reference="$(python - "$RECEIPT_PATH" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["oci"]["immutable_reference"])
+          PY
+          )"
+          artifact_name="$(python - "$METADATA_PATH" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["artifact"]["name"])
+          PY
+          )"
+          mkdir -p "$PULL_DIRECTORY"
+          oras pull "$immutable_reference" --output "$PULL_DIRECTORY"
+          python -m pipeline.oci.cli verify \
+            --metadata "$METADATA_PATH" \
+            --artifact "$PULL_DIRECTORY/$artifact_name"
 
       - name: Upload OCI publication receipt
         if: inputs.dry-run != true
