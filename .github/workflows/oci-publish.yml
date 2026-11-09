@@ -276,6 +276,48 @@ jobs:
           set -euo pipefail
           bash -euo pipefail -c "$COMMAND"
 
+      - name: Stage immutable package bytes and re-verify metadata
+        id: stage
+        shell: bash
+        env:
+          ARTIFACT_PATH: ${{ steps.package.outputs.artifact_path }}
+          METADATA_PATH: ${{ steps.package.outputs.metadata_path }}
+          EXPECTED_METADATA_SHA256: ${{ steps.package.outputs.metadata_sha256 }}
+          STAGING_DIRECTORY: ${{ runner.temp }}/pipeline-oci-publish
+        run: |
+          set -euo pipefail
+          staged_path="$(python - <<'PY'
+          import hashlib
+          import os
+          import shutil
+          from pathlib import Path
+
+          source = Path(os.environ["ARTIFACT_PATH"])
+          metadata = Path(os.environ["METADATA_PATH"])
+          expected = os.environ["EXPECTED_METADATA_SHA256"]
+          actual = hashlib.sha256(metadata.read_bytes()).hexdigest()
+          if actual != expected:
+              raise SystemExit("Package metadata changed after preparation")
+          if source.is_symlink() or not source.is_file():
+              raise SystemExit("Package source is no longer a regular file")
+          destination_dir = Path(os.environ["STAGING_DIRECTORY"])
+          destination_dir.mkdir(parents=True, exist_ok=True)
+          destination = destination_dir / source.name
+          if destination.exists() or destination.is_symlink():
+              raise SystemExit("Refusing to overwrite staged package bytes")
+          with source.open("rb") as reader, destination.open("xb") as writer:
+              shutil.copyfileobj(reader, writer, length=1024 * 1024)
+              writer.flush()
+              os.fsync(writer.fileno())
+          destination.chmod(0o444)
+          print(destination.resolve())
+          PY
+          )"
+          python -m pipeline.oci.cli verify \
+            --metadata "$METADATA_PATH" \
+            --artifact "$staged_path"
+          printf 'artifact_path=%s\\n' "$staged_path" >> "$GITHUB_OUTPUT"
+
       - name: Report dry-run package descriptor
         if: inputs.dry-run == true
         shell: bash
