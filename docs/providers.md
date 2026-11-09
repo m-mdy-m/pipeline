@@ -171,6 +171,7 @@ Java.
 | `release.yml` | Matrix build/test, checksum assembly, and GitHub Release publishing. |
 | `source-release.yml` | Validated source ZIP from the exact tagged Git snapshot, with secret scanning. |
 | `docker-publish.yml` | Multi-platform Docker image build and optional push. |
+| `oci-publish.yml` | Target-matrix package build, metadata/hash verification, ORAS push to GHCR, immutable digest receipt, and registry round-trip verification. |
 | `npm-publish.yml` | npm install, test, build, package check, and publish. |
 | `python-publish.yml` | Python sdist/wheel build, Twine validation, and PyPI publishing. |
 | `pages.yml` | Site build, Pages artifact upload, and optional deployment. |
