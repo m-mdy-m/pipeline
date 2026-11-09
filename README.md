@@ -117,7 +117,7 @@ Set `toolchain-preset: true` to use the engine's language preset instead of pass
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md), then read [Getting started](docs/getting-started.md), [Task configuration](docs/configuration.md), [Language toolchains](docs/toolchains.md), [Design](docs/design.md), [Providers](docs/providers.md), [Benchmarks](docs/benchmarking.md), [Releases](docs/releases.md), and [Development](docs/development.md).
+Start with the [documentation index](docs/index.md), then read [Getting started](docs/getting-started.md), [Task configuration](docs/configuration.md), [Language toolchains](docs/toolchains.md), [Design](docs/design.md), [Providers](docs/providers.md), [Benchmarks](docs/benchmarking.md), [Releases](docs/releases.md), and [Development](docs/development.md). For reusable OCI/GHCR package publishing, see [OCI packages](docs/oci-packages.md).
 
 ## Requirements and license
 
