@@ -34,6 +34,7 @@ pipeline-release-target = "pipeline.release.target_cli:main"
 pipeline-build-targets = "pipeline.release.matrix_cli:main"
 pipeline-source-release = "pipeline.release.cli:main"
 pipeline-verify-source-release = "pipeline.release.verify_cli:main"
+pipeline-oci = "pipeline.oci.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
