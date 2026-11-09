@@ -12,6 +12,7 @@ import json
 import os
 import re
 import stat
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
