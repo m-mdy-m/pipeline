@@ -15,6 +15,7 @@ from pipeline.oci.artifacts import (  # noqa: E402
     prepare_package_artifact,
     stage_package_artifact,
     validate_target_matrix,
+    validate_version,
     verify_package_artifact,
 )
 
@@ -33,6 +34,7 @@ class OciPackageArtifactTests(unittest.TestCase):
                 if path.exists():
                     path.chmod(0o600)
             except OSError:
+                # Read-only staged-file cleanup can fail on restricted filesystems.
                 pass
         self.temporary.cleanup()
 
@@ -228,6 +230,47 @@ class OciPackageArtifactTests(unittest.TestCase):
                 registry="ghcr.io",
                 owner="example",
             )
+
+
+    def test_public_semver_validator_rejects_invalid_versions(self) -> None:
+        self.assertEqual(validate_version("1.2.3-rc.1+build.7"), "1.2.3-rc.1+build.7")
+        with self.assertRaisesRegex(OciArtifactError, "SemVer"):
+            validate_version("latest")
+
+    def test_publication_receipt_rejects_malformed_registry_hosts_and_ports(self) -> None:
+        prepared = self.prepare()
+        digest = "sha256:" + ("b" * 64)
+        push_result = self.root / "push.json"
+        push_result.write_text(json.dumps({
+            "artifactType": "application/vnd.pipeline.package.v1",
+            "digest": digest,
+            "reference": f"ghcr.io/example/kernel@{digest}",
+            "referenceAsTags": ["ghcr.io/example/kernel:1.2.1-linux-amd64"],
+        }), encoding="utf-8")
+        for registry in ("..", ".ghcr.io", "ghcr..io", "ghcr.io.", "ghcr.io:0", "ghcr.io:65536"):
+            with self.subTest(registry=registry):
+                with self.assertRaisesRegex(OciArtifactError, "valid DNS hostname"):
+                    build_publication_receipt(
+                        metadata_path=prepared["metadata_path"],
+                        push_result_path=push_result,
+                        registry=registry,
+                        owner="example",
+                    )
+
+    def test_stage_refuses_to_replace_existing_destination(self) -> None:
+        prepared = self.prepare()
+        output = self.root / "staged"
+        output.mkdir()
+        destination = output / self.payload.name
+        destination.write_bytes(b"pre-existing data")
+        with self.assertRaisesRegex(OciArtifactError, "refusing to overwrite"):
+            stage_package_artifact(
+                metadata_path=prepared["metadata_path"],
+                artifact_path=self.payload,
+                output_directory=output,
+                expected_metadata_sha256=prepared["metadata_sha256"],
+            )
+        self.assertEqual(destination.read_bytes(), b"pre-existing data")
 
 
 if __name__ == "__main__":

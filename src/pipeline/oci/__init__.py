@@ -9,6 +9,7 @@ from .artifacts import (
     prepare_package_artifact,
     stage_package_artifact,
     validate_target_matrix,
+    validate_version,
     verify_package_artifact,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "prepare_package_artifact",
     "stage_package_artifact",
     "validate_target_matrix",
+    "validate_version",
     "verify_package_artifact",
 ]
