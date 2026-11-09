@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: main
+      source-ref:
+        description: "Component branch or tag to build; defaults to the triggering Git ref"
+        required: false
+        type: string
+        default: ""
       test-command:
         description: "Test command; every matrix target must pass before publishing"
         required: true
@@ -134,6 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.source-ref || github.ref }}
           fetch-depth: 0
 
       - name: Check out the shared release helper
@@ -195,7 +201,7 @@ jobs:
       - name: Verify the signed release tag
         if: inputs.require-signed-tag
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ inputs.source-ref || github.ref_name }}
           TAG_VERIFICATION_KEY: ${{ secrets.tag-verification-key }}
         shell: bash
         run: |
@@ -208,13 +214,36 @@ jobs:
         env:
           CHANGELOG_PATH: ${{ inputs.changelog-path }}
           DRY_RUN: ${{ inputs.dry-run }}
+          SOURCE_REF_INPUT: ${{ inputs.source-ref }}
           PYTHONPATH: .pipeline/src
         shell: bash
         run: |
           set -euo pipefail
+          source_ref="$SOURCE_REF_INPUT"
+          if [[ -z "$source_ref" ]]; then source_ref="$GITHUB_REF"; fi
+          if [[ "$source_ref" == refs/tags/* ]]; then
+            ref_type="tag"
+            ref_name="${source_ref#refs/tags/}"
+          elif [[ "$source_ref" == refs/heads/* ]]; then
+            ref_type="branch"
+            ref_name="${source_ref#refs/heads/}"
+          elif git show-ref --verify --quiet "refs/tags/$source_ref"; then
+            ref_type="tag"
+            ref_name="$source_ref"
+          elif git show-ref --verify --quiet "refs/remotes/origin/$source_ref"; then
+            ref_type="branch"
+            ref_name="$source_ref"
+          else
+            echo "::error title=Unknown source ref::Cannot resolve source-ref '$source_ref'."
+            exit 2
+          fi
+          commit_sha="$(git rev-parse --verify "${source_ref}^{commit}")"
           python -m pipeline.release.build_cli prepare \
             --changelog "$CHANGELOG_PATH" \
             --output-directory release-preparation \
+            --ref-type "$ref_type" \
+            --ref-name "$ref_name" \
+            --commit-sha "$commit_sha" \
             --dry-run "$DRY_RUN"
           python - <<'PY'
           import json
@@ -254,6 +283,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.source-ref || github.ref }}
           fetch-depth: 0
 
       - name: Check out the shared release target runner
@@ -769,7 +799,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.prepare.outputs.release_tag }}
           name: Release ${{ needs.prepare.outputs.version }}
           body_path: release-notes/release-notes.md
           files: |
