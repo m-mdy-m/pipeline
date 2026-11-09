@@ -418,7 +418,6 @@ jobs:
           METADATA_PATH: ${{ steps.package.outputs.metadata_path }}
           PULL_DIRECTORY: ${{ runner.temp }}/pipeline-oci-roundtrip
           PUBLISHED_ARTIFACT_PATH: ${{ steps.stage.outputs.artifact_path }}
-          RECEIPT_PATH: ${{ runner.temp }}/pipeline-oci-publication/receipt.json
           EVIDENCE_DIRECTORY: ${{ runner.temp }}/pipeline-oci-evidence
         run: |
           set -euo pipefail
