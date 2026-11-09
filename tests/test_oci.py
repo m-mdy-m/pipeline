@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from pipeline.oci.artifacts import (  # noqa: E402
     OciArtifactError,
+    build_publication_receipt,
     prepare_package_artifact,
     validate_target_matrix,
     verify_package_artifact,
@@ -135,6 +136,42 @@ class OciPackageArtifactTests(unittest.TestCase):
         self.prepare()
         with self.assertRaisesRegex(OciArtifactError, "refusing to overwrite"):
             self.prepare()
+
+    def test_publication_receipt_uses_the_immutable_manifest_digest(self) -> None:
+        prepared = self.prepare()
+        digest = "sha256:" + ("b" * 64)
+        push_result = self.root / "push.json"
+        push_result.write_text(json.dumps({
+            "artifactType": "application/vnd.pipeline.package.v1",
+            "digest": digest,
+            "reference": f"ghcr.io/example/kernel@{digest}",
+            "referenceAsTags": ["ghcr.io/example/kernel:1.2.1-linux-amd64"],
+        }), encoding="utf-8")
+        receipt = build_publication_receipt(
+            metadata_path=prepared["metadata_path"],
+            push_result_path=push_result,
+            registry="ghcr.io",
+            owner="Example",
+        )
+        self.assertEqual(receipt["oci"]["reference"], "ghcr.io/example/kernel:1.2.1-linux-amd64")
+        self.assertEqual(receipt["oci"]["immutable_reference"], f"ghcr.io/example/kernel@{digest}")
+
+    def test_publication_receipt_rejects_reference_digest_drift(self) -> None:
+        prepared = self.prepare()
+        push_result = self.root / "push.json"
+        push_result.write_text(json.dumps({
+            "artifactType": "application/vnd.pipeline.package.v1",
+            "digest": "sha256:" + ("b" * 64),
+            "reference": "ghcr.io/example/kernel@sha256:" + ("c" * 64),
+            "referenceAsTags": ["ghcr.io/example/kernel:1.2.1-linux-amd64"],
+        }), encoding="utf-8")
+        with self.assertRaisesRegex(OciArtifactError, "does not match its digest"):
+            build_publication_receipt(
+                metadata_path=prepared["metadata_path"],
+                push_result_path=push_result,
+                registry="ghcr.io",
+                owner="example",
+            )
 
 
 if __name__ == "__main__":
