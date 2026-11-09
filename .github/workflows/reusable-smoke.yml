@@ -130,6 +130,32 @@ jobs:
       python-version: "3.12"
       dry-run: true
 
+  oci-package-dry-run:
+    permissions:
+      contents: read
+    name: Reusable OCI package preparation without GHCR push
+    uses: ./.github/workflows/oci-publish.yml
+    with:
+      pipeline-ref: ${{ github.sha }}
+      package-name: pipeline-oci-smoke
+      component-id: pipeline-smoke
+      variant: default
+      version: 0.0.0-dev.1
+      build-command: |
+        set -euo pipefail
+        mkdir -p dist
+        printf 'pipeline OCI package smoke\\n' > dist/package-content.txt
+        tar -czf dist/pipeline-oci-smoke.tar.gz -C dist package-content.txt
+      test-command: python -m pipeline.oci.cli validate-version --value 0.0.0-dev.1
+      artifact-path: dist/pipeline-oci-smoke.tar.gz
+      artifact-test-command: >-
+        python -m pipeline.oci.cli verify
+        --metadata "$PIPELINE_PACKAGE_METADATA"
+        --artifact "$PIPELINE_ARTIFACT_PATH"
+      build-matrix-json: >-
+        {"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"amd64","abi":"gnu"}]}
+      dry-run: true
+
   pages-dry-run:
     permissions:
       contents: read
