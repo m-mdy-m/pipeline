@@ -80,13 +80,23 @@ on:
         required: false
         type: boolean
         default: false
+      allow-branch-publish:
+        description: "Explicitly allow GHCR publication from the dedicated OCI integration branch"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   publish:
-    if: inputs.dry-run == true || startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      inputs.dry-run == true ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      (inputs.allow-branch-publish == true &&
+       github.event_name == 'push' &&
+       github.ref == 'refs/heads/feat/oci-artifacts-ghcr')
     name: Build and publish OCI package / ${{ matrix.id }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -168,7 +178,7 @@ jobs:
 
       - name: Run project setup
         if: inputs.setup-command != '' || matrix.setup_command != null
-        shell: ${{ matrix.shell || 'bash' }}
+        shell: bash
         env:
           COMMAND: ${{ matrix.setup_command || inputs.setup-command }}
         run: |
@@ -177,7 +187,7 @@ jobs:
 
       - name: Run project tests
         if: inputs.test-command != '' || matrix.test_command != null
-        shell: ${{ matrix.shell || 'bash' }}
+        shell: bash
         env:
           COMMAND: ${{ matrix.test_command || inputs.test-command }}
           PIPELINE_TARGET_ID: ${{ matrix.id }}
@@ -189,7 +199,7 @@ jobs:
           bash -euo pipefail -c "$COMMAND"
 
       - name: Build package
-        shell: ${{ matrix.shell || 'bash' }}
+        shell: bash
         env:
           COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_TARGET_ID: ${{ matrix.id }}
@@ -267,7 +277,7 @@ jobs:
 
       - name: Test the packaged artifact
         if: inputs.artifact-test-command != '' || matrix.artifact_test_command != null
-        shell: ${{ matrix.shell || 'bash' }}
+        shell: bash
         env:
           COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
           PIPELINE_ARTIFACT_PATH: ${{ steps.package.outputs.artifact_path }}
@@ -316,10 +326,10 @@ jobs:
           {
             echo "## OCI package dry run"
             echo
-            echo "- Package: `$PACKAGE_NAME:$TAG`"
-            echo "- Version: `$PACKAGE_VERSION`"
-            echo "- Target: `$TARGET_ID`"
-            echo "- Payload SHA-256: `$ARTIFACT_SHA256`"
+            echo "- Package: $PACKAGE_NAME:$TAG"
+            echo "- Version: $PACKAGE_VERSION"
+            echo "- Target: $TARGET_ID"
+            echo "- Payload SHA-256: $ARTIFACT_SHA256"
             echo "- Registry push: skipped"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -407,6 +417,9 @@ jobs:
           RECEIPT_PATH: ${{ runner.temp }}/pipeline-oci-publication/receipt.json
           METADATA_PATH: ${{ steps.package.outputs.metadata_path }}
           PULL_DIRECTORY: ${{ runner.temp }}/pipeline-oci-roundtrip
+          PUBLISHED_ARTIFACT_PATH: ${{ steps.stage.outputs.artifact_path }}
+          RECEIPT_PATH: ${{ runner.temp }}/pipeline-oci-publication/receipt.json
+          EVIDENCE_DIRECTORY: ${{ runner.temp }}/pipeline-oci-evidence
         run: |
           set -euo pipefail
           immutable_reference="$(python - "$RECEIPT_PATH" <<'PY'
@@ -428,12 +441,42 @@ jobs:
           python -m pipeline.oci.cli verify \
             --metadata "$METADATA_PATH" \
             --artifact "$PULL_DIRECTORY/$artifact_name"
+          python - "$EVIDENCE_DIRECTORY" "$PUBLISHED_ARTIFACT_PATH" "$METADATA_PATH" "$RECEIPT_PATH" "$PULL_DIRECTORY/$artifact_name" "$artifact_name" <<'PY'
+          import hashlib
+          import shutil
+          import sys
+          from pathlib import Path
 
-      - name: Upload OCI publication receipt
+          evidence = Path(sys.argv[1])
+          if evidence.exists():
+              raise SystemExit("Refusing to overwrite the OCI evidence directory")
+          evidence.mkdir(parents=True)
+          sources = (
+              ("published-" + sys.argv[6], Path(sys.argv[2])),
+              ("package-metadata.json", Path(sys.argv[3])),
+              ("receipt.json", Path(sys.argv[4])),
+              ("roundtrip-" + sys.argv[6], Path(sys.argv[5])),
+          )
+          written = []
+          for name, source in sources:
+              if source.is_symlink() or not source.is_file():
+                  raise SystemExit(f"OCI evidence source is not a regular file: {source}")
+              destination = evidence / name
+              with source.open("rb") as reader, destination.open("xb") as writer:
+                  shutil.copyfileobj(reader, writer, length=1024 * 1024)
+              written.append(destination)
+          checksums = [
+              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
+              for path in written
+          ]
+          (evidence / "SHA256SUMS").write_text("\n".join(checksums) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload OCI package and round-trip evidence
         if: inputs.dry-run != true
         uses: actions/upload-artifact@v7
         with:
-          name: oci-package-receipt-${{ matrix.id }}
-          path: ${{ runner.temp }}/pipeline-oci-publication/receipt.json
+          name: oci-package-${{ matrix.id }}
+          path: ${{ runner.temp }}/pipeline-oci-evidence/
           if-no-files-found: error
           retention-days: 30

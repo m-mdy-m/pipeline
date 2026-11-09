@@ -133,6 +133,7 @@ jobs:
   oci-package-dry-run:
     permissions:
       contents: read
+      packages: write
     name: Reusable OCI package preparation without GHCR push
     uses: ./.github/workflows/oci-publish.yml
     with:

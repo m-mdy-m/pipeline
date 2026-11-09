@@ -29,6 +29,7 @@ NEW_WORKFLOWS = (
     "toolchain-smoke.yml",
     "benchmark-regression.yml",
     "oci-publish.yml",
+    "oci-smoke-publish.yml",
 )
 NEW_ACTIONS = (
     "python-quality",
@@ -370,3 +371,46 @@ class ProjectExampleTests(unittest.TestCase):
                         if key not in declared:
                             problems.append(f"{where}: unknown input {key!r} for {target}")
         self.assertEqual(problems, [])
+
+
+@unittest.skipIf(yaml is None, "PyYAML is not installed")
+class OciPublicationWorkflowTests(unittest.TestCase):
+    def test_branch_publication_requires_explicit_opt_in_and_exact_branch(self) -> None:
+        workflow = load_yaml(WORKFLOWS / "oci-publish.yml")
+        call_inputs = triggers(workflow)["workflow_call"]["inputs"]
+        self.assertFalse(call_inputs["allow-branch-publish"]["default"])
+        condition = str(workflow["jobs"]["publish"]["if"])
+        self.assertIn("inputs.allow-branch-publish == true", condition)
+        self.assertIn("github.event_name == 'push'", condition)
+        self.assertIn("github.ref == 'refs/heads/feat/oci-artifacts-ghcr'", condition)
+
+    def test_real_smoke_publishes_a_versioned_ghcr_package_on_the_feature_branch(self) -> None:
+        workflow = load_yaml(WORKFLOWS / "oci-smoke-publish.yml")
+        self.assertEqual(triggers(workflow)["push"]["branches"], ["feat/oci-artifacts-ghcr"])
+        job = workflow["jobs"]["publish-smoke"]
+        self.assertEqual(job["if"], "github.ref == 'refs/heads/feat/oci-artifacts-ghcr'")
+        self.assertEqual(job["uses"], "./.github/workflows/oci-publish.yml")
+        self.assertEqual(job["permissions"]["packages"], "write")
+        inputs = job["with"]
+        self.assertEqual(inputs["package-name"], "pipeline-oci-smoke")
+        self.assertEqual(inputs["component-id"], "pipeline-smoke")
+        self.assertFalse(inputs["dry-run"])
+        self.assertTrue(inputs["allow-branch-publish"])
+        self.assertIn("github.run_number", inputs["version"])
+        self.assertIn("tar -czf", inputs["build-command"])
+        self.assertIn("tar -tzf", inputs["artifact-test-command"])
+        self.assertIn("pipeline.oci.cli verify", inputs["artifact-test-command"])
+
+    def test_successful_publication_uploads_roundtrip_payload_and_integrity_receipt(self) -> None:
+        workflow = load_yaml(WORKFLOWS / "oci-publish.yml")
+        steps = workflow["jobs"]["publish"]["steps"]
+        roundtrip = next(step for step in steps if step.get("name") == "Pull the published package by immutable digest")
+        upload = next(step for step in steps if step.get("name") == "Upload OCI package and round-trip evidence")
+        self.assertIn("oras pull \"$immutable_reference\"", roundtrip["run"])
+        self.assertIn("pipeline.oci.cli verify", roundtrip["run"])
+        self.assertIn("roundtrip-", roundtrip["run"])
+        self.assertIn("SHA256SUMS", roundtrip["run"])
+        self.assertIn("receipt.json", roundtrip["run"])
+        self.assertEqual(upload["uses"], "actions/upload-artifact@v7")
+        self.assertIn("oci-evidence", upload["with"]["path"])
+        self.assertEqual(upload["with"]["retention-days"], 30)

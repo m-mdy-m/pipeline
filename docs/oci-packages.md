@@ -116,6 +116,27 @@ The workflow then pulls the package again by that immutable digest and verifies 
 
 A tag is useful for discovery, but never use `latest` or a mutable tag as the authoritative identity in a product lock or Registry Manifest. Store the exact OCI digest and the package metadata identity.
 
+## Live GHCR smoke publication
+
+The repository includes `.github/workflows/oci-smoke-publish.yml`, a deliberately
+narrow integration workflow for the `feat/oci-artifacts-ghcr` branch. A push to
+that branch builds a small tarball and publishes it as the disposable
+`ghcr.io/<owner>/pipeline-oci-smoke` package. Its version includes the workflow
+run number and attempt, so repeated smoke runs do not overwrite an earlier tag.
+
+This is a real GHCR publication, not a dry run. The smoke caller opts in through
+`allow-branch-publish: true`; the reusable publisher accepts that opt-in only
+for a push to the exact integration branch. Normal non-tag calls remain blocked,
+and release-tag publishing is unchanged.
+
+After pushing, the workflow pulls the package by its immutable manifest digest
+and verifies the downloaded bytes against the original metadata. It uploads a
+30-day GitHub Actions artifact named `oci-package-linux-amd64` containing the
+published payload, package metadata, publication receipt, round-trip payload,
+and a `SHA256SUMS` manifest. This gives reviewers both the GHCR package and a
+downloadable evidence bundle from the workflow run. Smoke package versions are
+disposable and can be removed from GitHub Packages after validation.
+
 ## Security and boundaries
 
 - Package creation and package verification are provider-neutral Python code. GHCR credentials and ORAS network operations stay in the GitHub workflow.
