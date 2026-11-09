@@ -352,13 +352,31 @@ jobs:
             --output-directory "$STAGING_DIRECTORY" \
             --expected-metadata-sha256 "$EXPECTED_METADATA_SHA256" > "$RESULT_PATH"
           python - "$RESULT_PATH" "$GITHUB_OUTPUT" <<'PY'
+          import hashlib
           import json
+          import os
+          import shutil
           import sys
           from pathlib import Path
 
           result = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          source = Path(os.environ["METADATA_PATH"])
+          if source.is_symlink() or not source.is_file():
+              raise SystemExit("Package metadata is no longer a regular file")
+          expected = os.environ["EXPECTED_METADATA_SHA256"]
+          if hashlib.sha256(source.read_bytes()).hexdigest() != expected:
+              raise SystemExit("Package metadata changed before staging")
+          metadata_copy = Path(os.environ["STAGING_DIRECTORY"]) / "package-metadata.json"
+          if metadata_copy.exists() or metadata_copy.is_symlink():
+              raise SystemExit("Refusing to overwrite staged package metadata")
+          with source.open("rb") as reader, metadata_copy.open("xb") as writer:
+              shutil.copyfileobj(reader, writer, length=1024 * 1024)
+              writer.flush()
+              os.fsync(writer.fileno())
+          metadata_copy.chmod(0o444)
           with Path(sys.argv[2]).open("a", encoding="utf-8") as output:
-              output.write(f"artifact_path={result['artifact_path']}\n")
+              output.write(f"artifact_path={result['artifact_path']}\\n")
+              output.write(f"metadata_path={metadata_copy.resolve()}\\n")
           PY
 
       - name: Report dry-run package descriptor
@@ -401,7 +419,7 @@ jobs:
           SOURCE_REVISION_INPUT: ${{ inputs.source-revision }}
           ARTIFACT_MEDIA_TYPE: ${{ inputs.artifact-media-type }}
           ARTIFACT_PATH: ${{ steps.stage.outputs.artifact_path }}
-          METADATA_PATH: ${{ steps.package.outputs.metadata_path }}
+          METADATA_PATH: ${{ steps.stage.outputs.metadata_path }}
           PACKAGE_TAG: ${{ steps.package.outputs.tag }}
         run: |
           set -euo pipefail
@@ -411,15 +429,26 @@ jobs:
           if [[ -z "$source_repository" ]]; then source_repository="https://github.com/$GITHUB_REPOSITORY"; fi
           source_revision="$SOURCE_REVISION_INPUT"
           if [[ -z "$source_revision" ]]; then source_revision="$GITHUB_SHA"; fi
-          oras push "$reference" \
-            --artifact-type application/vnd.pipeline.package.v1 \
-            --config "$METADATA_PATH:application/vnd.pipeline.package.config.v1+json" \
-            --annotation "org.opencontainers.image.source=$source_repository" \
-            --annotation "org.opencontainers.image.revision=$source_revision" \
-            --annotation "org.opencontainers.image.version=$PACKAGE_VERSION" \
-            --annotation "org.opencontainers.image.title=$PACKAGE_NAME" \
-            "$ARTIFACT_PATH:$ARTIFACT_MEDIA_TYPE" \
-            --format json > "$RUNNER_TEMP/pipeline-oci-push.json"
+          artifact_directory="$(dirname "$ARTIFACT_PATH")"
+          metadata_directory="$(dirname "$METADATA_PATH")"
+          artifact_file="$(basename "$ARTIFACT_PATH")"
+          metadata_file="$(basename "$METADATA_PATH")"
+          [[ "$artifact_directory" == "$metadata_directory" ]] || {
+            echo "staged payload and metadata must share one directory" >&2
+            exit 2
+          }
+          (
+            cd "$artifact_directory"
+            oras push "$reference" \
+              --artifact-type application/vnd.pipeline.package.v1 \
+              --config "$metadata_file:application/vnd.pipeline.package.config.v1+json" \
+              --annotation "org.opencontainers.image.source=$source_repository" \
+              --annotation "org.opencontainers.image.revision=$source_revision" \
+              --annotation "org.opencontainers.image.version=$PACKAGE_VERSION" \
+              --annotation "org.opencontainers.image.title=$PACKAGE_NAME" \
+              "$artifact_file:$ARTIFACT_MEDIA_TYPE" \
+              --format json
+          ) > "$RUNNER_TEMP/pipeline-oci-push.json"
 
       - name: Create immutable OCI publication receipt
         if: inputs.dry-run != true
