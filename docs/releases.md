@@ -5,7 +5,7 @@ pipeline provides two different release workflows. Choose the one that matches w
 - **Build release**: run your build and test commands, collect the files they produce, and attach those files to a GitHub Release.
 - **Source release**: make a ZIP from the exact files tracked by a Git tag, then check the ZIP and its contents.
 
-A source ZIP does not compile your project. A build release does not replace the source-release safety checks.
+A source ZIP does not compile your project. A build release does not replace the source-release safety checks. For installable package publication to GHCR/OCI registries, use the separate [OCI package workflow](oci-packages.md); GitHub Release assets and OCI packages are different distribution contracts.
 
 ## Release this repository
 
