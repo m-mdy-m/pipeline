@@ -367,6 +367,10 @@ def build_publication_receipt(
         "source": metadata["source"],
         "target": metadata["target"],
         "artifact": metadata["artifact"],
+        "metadata": {
+            "name": _METADATA_FILENAME,
+            "sha256": _sha256_file(descriptor_path),
+        },
         "oci": {
             "registry": registry_host,
             "reference": tagged_reference,
