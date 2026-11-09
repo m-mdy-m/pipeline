@@ -153,7 +153,7 @@ jobs:
         --metadata "$PIPELINE_PACKAGE_METADATA"
         --artifact "$PIPELINE_ARTIFACT_PATH"
       build-matrix-json: >-
-        {"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"amd64","abi":"gnu"}]}
+        {"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"x86_64","abi":"gnu"}]}
       dry-run: true
 
   pages-dry-run:
