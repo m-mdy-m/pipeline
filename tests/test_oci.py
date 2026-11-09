@@ -155,6 +155,7 @@ class OciPackageArtifactTests(unittest.TestCase):
         )
         self.assertEqual(receipt["oci"]["reference"], "ghcr.io/example/kernel:1.2.1-linux-amd64")
         self.assertEqual(receipt["oci"]["immutable_reference"], f"ghcr.io/example/kernel@{digest}")
+        self.assertEqual(receipt["metadata"]["sha256"], prepared["metadata_sha256"])
 
     def test_publication_receipt_rejects_reference_digest_drift(self) -> None:
         prepared = self.prepare()
