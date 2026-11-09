@@ -126,7 +126,7 @@ python -m pipeline.oci.cli prepare --help
 python -m pipeline.oci.cli verify --help
 
 # Validate a release target matrix
-python -m pipeline.oci.cli validate-matrix --value '{"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"amd64","abi":"gnu"}]}'
+python -m pipeline.oci.cli validate-matrix --value '{"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"x86_64","abi":"gnu"}]}'
 
 # Validate a version
 python -m pipeline.oci.cli validate-version --value 1.2.1
