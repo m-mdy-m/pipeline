@@ -177,7 +177,7 @@ jobs:
           version: ${{ inputs.oras-version }}
 
       - name: Run project setup
-        if: inputs.setup-command != '' || matrix.setup_command != null
+        if: (inputs.setup-command != '' || matrix.setup_command != null) && matrix.msys2_msystem == null
         shell: bash
         env:
           COMMAND: ${{ matrix.setup_command || inputs.setup-command }}
@@ -185,8 +185,17 @@ jobs:
           set -euo pipefail
           bash -euo pipefail -c "$COMMAND"
 
+      - name: Run project setup (MSYS2)
+        if: (inputs.setup-command != '' || matrix.setup_command != null) && matrix.msys2_msystem != null
+        shell: msys2 {0}
+        env:
+          COMMAND: ${{ matrix.setup_command || inputs.setup-command }}
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$COMMAND"
+
       - name: Run project tests
-        if: inputs.test-command != '' || matrix.test_command != null
+        if: (inputs.test-command != '' || matrix.test_command != null) && matrix.msys2_msystem == null
         shell: bash
         env:
           COMMAND: ${{ matrix.test_command || inputs.test-command }}
@@ -198,8 +207,35 @@ jobs:
           set -euo pipefail
           bash -euo pipefail -c "$COMMAND"
 
+      - name: Run project tests (MSYS2)
+        if: (inputs.test-command != '' || matrix.test_command != null) && matrix.msys2_msystem != null
+        shell: msys2 {0}
+        env:
+          COMMAND: ${{ matrix.test_command || inputs.test-command }}
+          PIPELINE_TARGET_ID: ${{ matrix.id }}
+          PIPELINE_TARGET_OS: ${{ matrix.target_os }}
+          PIPELINE_TARGET_ARCH: ${{ matrix.architecture }}
+          PIPELINE_TARGET_ABI: ${{ matrix.abi }}
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$COMMAND"
+
       - name: Build package
+        if: matrix.msys2_msystem == null
         shell: bash
+        env:
+          COMMAND: ${{ matrix.build_command || inputs.build-command }}
+          PIPELINE_TARGET_ID: ${{ matrix.id }}
+          PIPELINE_TARGET_OS: ${{ matrix.target_os }}
+          PIPELINE_TARGET_ARCH: ${{ matrix.architecture }}
+          PIPELINE_TARGET_ABI: ${{ matrix.abi }}
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$COMMAND"
+
+      - name: Build package (MSYS2)
+        if: matrix.msys2_msystem != null
+        shell: msys2 {0}
         env:
           COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_TARGET_ID: ${{ matrix.id }}
@@ -276,8 +312,20 @@ jobs:
           python -m pipeline.oci.cli verify --metadata "$METADATA_PATH" --artifact "$ARTIFACT_PATH"
 
       - name: Test the packaged artifact
-        if: inputs.artifact-test-command != '' || matrix.artifact_test_command != null
+        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && matrix.msys2_msystem == null
         shell: bash
+        env:
+          COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
+          PIPELINE_ARTIFACT_PATH: ${{ steps.package.outputs.artifact_path }}
+          PIPELINE_PACKAGE_METADATA: ${{ steps.package.outputs.metadata_path }}
+          PIPELINE_PACKAGE_TAG: ${{ steps.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$COMMAND"
+
+      - name: Test the packaged artifact (MSYS2)
+        if: (inputs.artifact-test-command != '' || matrix.artifact_test_command != null) && matrix.msys2_msystem != null
+        shell: msys2 {0}
         env:
           COMMAND: ${{ matrix.artifact_test_command || inputs.artifact-test-command }}
           PIPELINE_ARTIFACT_PATH: ${{ steps.package.outputs.artifact_path }}
