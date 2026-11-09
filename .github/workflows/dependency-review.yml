@@ -59,6 +59,6 @@ jobs:
             echo
             echo "The dependency graph feature is not enabled for this repository."
             echo "Enable it under Settings → Security → Code security and analysis,"
-            echo "then set the Actions variable `PIPELINE_DEPENDENCY_REVIEW_ENABLED=true`."
+            echo 'then set the Actions variable PIPELINE_DEPENDENCY_REVIEW_ENABLED=true.'
             echo "The dependency review action will run automatically on future dependency PRs."
           } >> "$GITHUB_STEP_SUMMARY"

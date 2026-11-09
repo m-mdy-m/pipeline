@@ -1,0 +1,43 @@
+name: OCI GHCR Integration Smoke
+
+on:
+  push:
+    branches: ["feat/oci-artifacts-ghcr"]
+    paths:
+      - ".github/workflows/oci-smoke-publish.yml"
+      - ".github/workflows/oci-publish.yml"
+      - "src/pipeline/oci/**"
+      - "tests/test_oci.py"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-smoke:
+    if: github.ref == 'refs/heads/feat/oci-artifacts-ghcr'
+    name: Publish smoke package to GHCR and verify digest round-trip
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/oci-publish.yml
+    with:
+      pipeline-ref: ${{ github.sha }}
+      package-name: pipeline-oci-smoke
+      component-id: pipeline-smoke
+      variant: integration
+      version: 0.0.0-smoke.${{ github.run_number }}.${{ github.run_attempt }}
+      build-command: |
+        set -euo pipefail
+        mkdir -p dist
+        printf '%s\\n' "Pipeline OCI GHCR smoke package ${GITHUB_SHA}" > dist/package-content.txt
+        tar -czf dist/pipeline-oci-smoke.tar.gz -C dist package-content.txt
+      artifact-path: dist/pipeline-oci-smoke.tar.gz
+      artifact-test-command: |
+        set -euo pipefail
+        tar -tzf "$PIPELINE_ARTIFACT_PATH" | grep -Fx 'package-content.txt'
+        tar -xOzf "$PIPELINE_ARTIFACT_PATH" package-content.txt | grep -F 'Pipeline OCI GHCR smoke package'
+        python -m pipeline.oci.cli verify --metadata "$PIPELINE_PACKAGE_METADATA" --artifact "$PIPELINE_ARTIFACT_PATH"
+      build-matrix-json: >-
+        {"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"x86_64","abi":"gnu"}]}
+      allow-branch-publish: true
+      dry-run: false
