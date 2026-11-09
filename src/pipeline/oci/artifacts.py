@@ -58,6 +58,11 @@ def _version(value: object) -> str:
     return value
 
 
+def validate_version(value: object) -> str:
+    """Validate and return a SemVer version suitable for package metadata."""
+    return _version(value)
+
+
 def _source_repository(value: object) -> str:
     if not isinstance(value, str) or not value:
         raise OciArtifactError("source repository must be an HTTPS URL")
@@ -126,11 +131,18 @@ def _write_new_file(path: Path, content: str) -> None:
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        try:
+            os.link(temporary, path)
+        except FileExistsError as exc:
+            raise OciArtifactError(
+                f"refusing to overwrite existing metadata file: {path}"
+            ) from exc
+        temporary.unlink()
     except Exception:
         try:
             temporary.unlink(missing_ok=True)
         except OSError:
+            # Cleanup is best-effort; preserve the original operation failure.
             pass
         raise
 
@@ -273,33 +285,53 @@ def prepare_package_artifact(
 
 
 def verify_package_artifact(metadata_path: str | Path, artifact_path: str | Path) -> dict[str, Any]:
-    """Verify a package file against its deterministic metadata descriptor."""
+    """Verify a package against one descriptor and one opened payload snapshot."""
     descriptor_path = Path(metadata_path)
     if descriptor_path.is_symlink() or not descriptor_path.is_file():
         raise OciArtifactError("metadata path must be a regular file")
     try:
-        metadata = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        metadata_bytes = descriptor_path.read_bytes()
+        metadata = json.loads(metadata_bytes.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise OciArtifactError(f"package metadata is not valid UTF-8 JSON: {exc}") from exc
     metadata = _validate_metadata(metadata)
+    metadata_digest = hashlib.sha256(metadata_bytes).hexdigest()
 
     payload = Path(artifact_path)
     if payload.is_symlink():
         raise OciArtifactError("artifact must not be a symbolic link")
-    try:
-        mode = payload.stat().st_mode
-    except OSError as exc:
-        raise OciArtifactError(f"cannot stat artifact: {exc}") from exc
-    if not stat.S_ISREG(mode):
-        raise OciArtifactError("artifact must be a regular file")
     if payload.name != metadata["artifact"]["name"]:
         raise OciArtifactError("artifact filename does not match package metadata")
-    actual_size = payload.stat().st_size
-    if actual_size != metadata["artifact"]["size"]:
-        raise OciArtifactError(
-            f"artifact size mismatch: expected {metadata['artifact']['size']}, got {actual_size}"
-        )
-    actual_digest = _sha256_file(payload)
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(payload, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise OciArtifactError("artifact must be a regular file")
+            actual_size = before.st_size
+            if actual_size != metadata["artifact"]["size"]:
+                raise OciArtifactError(
+                    f"artifact size mismatch: expected {metadata['artifact']['size']}, got {actual_size}"
+                )
+
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+            after = os.fstat(stream.fileno())
+    except OciArtifactError:
+        raise
+    except OSError as exc:
+        raise OciArtifactError(f"cannot open or read package artifact: {exc}") from exc
+
+    if (
+        after.st_size != before.st_size
+        or after.st_mtime_ns != before.st_mtime_ns
+        or after.st_ctime_ns != before.st_ctime_ns
+    ):
+        raise OciArtifactError("artifact changed while it was being verified")
+    actual_digest = digest.hexdigest()
     if actual_digest != metadata["artifact"]["sha256"]:
         raise OciArtifactError("artifact SHA-256 mismatch")
     return {
@@ -312,7 +344,7 @@ def verify_package_artifact(metadata_path: str | Path, artifact_path: str | Path
         "artifact": metadata["artifact"]["name"],
         "size": actual_size,
         "sha256": actual_digest,
-        "metadata_sha256": _sha256_file(descriptor_path),
+        "metadata_sha256": metadata_digest,
         "verified": True,
     }
 
@@ -394,8 +426,12 @@ def stage_package_artifact(
         if hashlib.sha256(descriptor_path.read_bytes()).hexdigest() != expected_metadata_sha256:
             raise OciArtifactError("package metadata changed while staging")
         temporary.chmod(0o444)
-        os.replace(temporary, destination)
+        try:
+            os.link(temporary, destination)
+        except FileExistsError as exc:
+            raise OciArtifactError("refusing to overwrite an existing staged package") from exc
         published = True
+        temporary.unlink()
 
         if hashlib.sha256(descriptor_path.read_bytes()).hexdigest() != expected_metadata_sha256:
             raise OciArtifactError("package metadata changed before staging completed")
@@ -416,6 +452,7 @@ def stage_package_artifact(
                 destination.chmod(0o600)
                 destination.unlink(missing_ok=True)
         except OSError:
+            # Cleanup is best-effort; preserve the original operation failure.
             pass
         raise
 
@@ -453,8 +490,14 @@ def build_publication_receipt(
         raise OciArtifactError("published OCI artifact type does not match the package descriptor")
 
     registry_host = registry.strip().lower()
-    if not re.fullmatch(r"[a-z0-9.-]+(?::[0-9]{1,5})?", registry_host):
-        raise OciArtifactError("registry must be a hostname with an optional port")
+    host, separator, port_text = registry_host.partition(":")
+    dns_label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    if (
+        len(host) > 253
+        or not re.fullmatch(rf"(?:{dns_label}\.)*{dns_label}", host)
+        or (separator and (not port_text.isdigit() or not 1 <= int(port_text) <= 65535))
+    ):
+        raise OciArtifactError("registry must be a valid DNS hostname with an optional port from 1 to 65535")
     repository_owner = _token(owner.lower(), "registry owner")
     package_name = metadata["package"]["name"]
     tag = metadata["package"]["tag"]

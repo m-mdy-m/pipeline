@@ -11,6 +11,7 @@ from .artifacts import (
     prepare_package_artifact,
     stage_package_artifact,
     validate_target_matrix,
+    validate_version,
     verify_package_artifact,
 )
 
@@ -88,8 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "validate-matrix":
             result = {"targets": validate_target_matrix(args.value)}
         elif args.command == "validate-version":
-            from .artifacts import _version
-            result = {"version": _version(args.value), "valid": True}
+            result = {"version": validate_version(args.value), "valid": True}
         else:
             result = build_publication_receipt(
                 metadata_path=args.metadata,
