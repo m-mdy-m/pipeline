@@ -165,8 +165,16 @@ def _validate_metadata(metadata: object) -> dict[str, Any]:
     _revision(source.get("revision"))
 
     artifact_name = artifact.get("name")
-    if not isinstance(artifact_name, str) or not artifact_name or Path(artifact_name).name != artifact_name:
-        raise OciArtifactError("artifact.name must be a basename without directory components")
+    if (
+        not isinstance(artifact_name, str)
+        or not artifact_name
+        or Path(artifact_name).name != artifact_name
+        or "/" in artifact_name
+        or "\\" in artifact_name
+        or ":" in artifact_name
+        or any(ord(character) < 32 for character in artifact_name)
+    ):
+        raise OciArtifactError("artifact.name must be a safe basename without path or control characters")
     if artifact_name in {".", ".."}:
         raise OciArtifactError("artifact.name is invalid")
     _media_type(artifact.get("media_type"))
@@ -348,7 +356,7 @@ def build_publication_receipt(
         raise OciArtifactError("ORAS returned a manifest reference that does not match its digest")
 
     references_as_tags = pushed.get("referenceAsTags")
-    if isinstance(references_as_tags, list) and tagged_reference not in references_as_tags:
+    if not isinstance(references_as_tags, list) or tagged_reference not in references_as_tags:
         raise OciArtifactError("ORAS result does not contain the expected package tag")
 
     return {
