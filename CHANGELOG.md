@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add provider-neutral OCI package descriptors and verification, plus a reusable target-matrix GHCR publisher using ORAS with immutable digest receipts and pullback verification.
+
 ### Fixed
 
 - Make the reusable YAML lint workflow ignore optional provider/configuration paths that are absent from consumer repositories.
