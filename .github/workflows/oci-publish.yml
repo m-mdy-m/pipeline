@@ -253,6 +253,7 @@ jobs:
               output.write(f"metadata_path={result['metadata_path']}\n")
               output.write(f"tag={result['tag']}\n")
               output.write(f"artifact_sha256={result['artifact_sha256']}\n")
+              output.write(f"metadata_sha256={result['metadata_sha256']}\n")
           PY
 
       - name: Verify package bytes and metadata
@@ -316,7 +317,7 @@ jobs:
           python -m pipeline.oci.cli verify \
             --metadata "$METADATA_PATH" \
             --artifact "$staged_path"
-          printf 'artifact_path=%s\\n' "$staged_path" >> "$GITHUB_OUTPUT"
+          printf 'artifact_path=%s\n' "$staged_path" >> "$GITHUB_OUTPUT"
 
       - name: Report dry-run package descriptor
         if: inputs.dry-run == true
@@ -357,7 +358,7 @@ jobs:
           SOURCE_REPOSITORY_INPUT: ${{ inputs.source-repository }}
           SOURCE_REVISION_INPUT: ${{ inputs.source-revision }}
           ARTIFACT_MEDIA_TYPE: ${{ inputs.artifact-media-type }}
-          ARTIFACT_PATH: ${{ steps.package.outputs.artifact_path }}
+          ARTIFACT_PATH: ${{ steps.stage.outputs.artifact_path }}
           METADATA_PATH: ${{ steps.package.outputs.metadata_path }}
           PACKAGE_TAG: ${{ steps.package.outputs.tag }}
         run: |
