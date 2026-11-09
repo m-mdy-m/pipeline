@@ -81,9 +81,9 @@ jobs:
       build-matrix-json: >-
         {"include":[
           {"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"x86_64","abi":"gnu"},
-          {"id":"linux-arm64","os":"ubuntu-24.04-arm","target_os":"linux","architecture":"arm64","abi":"gnu"},
-          {"id":"macos-arm64","os":"macos-15","target_os":"darwin","architecture":"arm64","abi":"none"},
-          {"id":"windows-amd64-ucrt64","os":"windows-2025","target_os":"windows","architecture":"amd64","abi":"ucrt64","msys2_msystem":"UCRT64","msys2_packages":"mingw-w64-ucrt-x86_64-gcc","shell":"msys2 {0}"}
+          {"id":"linux-arm64","os":"ubuntu-24.04-arm","target_os":"linux","architecture":"aarch64","abi":"gnu"},
+          {"id":"darwin-arm64","os":"macos-15","target_os":"macos","architecture":"arm64","abi":"none"},
+          {"id":"windows-amd64","os":"windows-2025","target_os":"windows","architecture":"x86_64","abi":"ucrt64","msys2_msystem":"UCRT64","msys2_packages":"mingw-w64-ucrt-x86_64-gcc","shell":"msys2 {0}"}
         ]}
 ~~~
 
