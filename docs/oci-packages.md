@@ -29,7 +29,7 @@ python -m pipeline.oci.cli prepare \
   --source-revision "$GITHUB_SHA" \
   --target-id linux-amd64 \
   --target-os linux \
-  --architecture amd64 \
+  --architecture x86_64 \
   --abi gnu
 ~~~
 
