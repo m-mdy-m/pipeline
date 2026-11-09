@@ -220,24 +220,42 @@ jobs:
         run: |
           set -euo pipefail
           source_ref="$SOURCE_REF_INPUT"
-          if [[ -z "$source_ref" ]]; then source_ref="$GITHUB_REF"; fi
-          if [[ "$source_ref" == refs/tags/* ]]; then
+          if [[ -z "$source_ref" || "$source_ref" == "$GITHUB_REF" ]]; then
+            # Pull-request workflows check out GitHub's synthetic merge ref.
+            # Treat it as a branch dry-run and bind metadata to the checked-out commit.
+            if [[ "$GITHUB_REF" == refs/pull/* ]]; then
+              ref_type="branch"
+              ref_name="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+              commit_sha="$(git rev-parse --verify HEAD)"
+            elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+              ref_type="tag"
+              ref_name="$GITHUB_REF_NAME"
+              commit_sha="$(git rev-parse --verify HEAD)"
+            else
+              ref_type="branch"
+              ref_name="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+              commit_sha="$(git rev-parse --verify HEAD)"
+            fi
+          elif [[ "$source_ref" == refs/tags/* ]]; then
             ref_type="tag"
             ref_name="${source_ref#refs/tags/}"
+            commit_sha="$(git rev-parse --verify "${source_ref}^{commit}")"
           elif [[ "$source_ref" == refs/heads/* ]]; then
             ref_type="branch"
             ref_name="${source_ref#refs/heads/}"
+            commit_sha="$(git rev-parse --verify "${source_ref}^{commit}")"
           elif git show-ref --verify --quiet "refs/tags/$source_ref"; then
             ref_type="tag"
             ref_name="$source_ref"
+            commit_sha="$(git rev-parse --verify "refs/tags/$source_ref^{commit}")"
           elif git show-ref --verify --quiet "refs/remotes/origin/$source_ref"; then
             ref_type="branch"
             ref_name="$source_ref"
+            commit_sha="$(git rev-parse --verify "refs/remotes/origin/$source_ref^{commit}")"
           else
             echo "::error title=Unknown source ref::Cannot resolve source-ref '$source_ref'."
             exit 2
           fi
-          commit_sha="$(git rev-parse --verify "${source_ref}^{commit}")"
           python -m pipeline.release.build_cli prepare \
             --changelog "$CHANGELOG_PATH" \
             --output-directory release-preparation \
