@@ -7,6 +7,7 @@ from .artifacts import (
     OciArtifactError,
     build_publication_receipt,
     prepare_package_artifact,
+    stage_package_artifact,
     validate_target_matrix,
     verify_package_artifact,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "OciArtifactError",
     "build_publication_receipt",
     "prepare_package_artifact",
+    "stage_package_artifact",
     "validate_target_matrix",
     "verify_package_artifact",
 ]
