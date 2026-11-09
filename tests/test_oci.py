@@ -52,7 +52,7 @@ class OciPackageArtifactTests(unittest.TestCase):
         self.assertEqual(metadata["component"], {"id": "kernel", "variant": "default"})
         self.assertEqual(metadata["package"]["tag"], "1.2.1-linux-amd64")
         self.assertEqual(metadata["target"], {
-            "id": "linux-amd64", "os": "linux", "architecture": "amd64", "abi": "gnu"
+            "id": "linux-amd64", "os": "linux", "architecture": "x86_64", "abi": "gnu"
         })
         self.assertEqual(metadata["artifact"]["size"], self.payload.stat().st_size)
         self.assertEqual(len(metadata["artifact"]["sha256"]), 64)
