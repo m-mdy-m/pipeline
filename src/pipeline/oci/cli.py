@@ -7,6 +7,7 @@ import sys
 
 from .artifacts import (
     OciArtifactError,
+    build_publication_receipt,
     prepare_package_artifact,
     validate_target_matrix,
     verify_package_artifact,
@@ -44,6 +45,12 @@ def main(argv: list[str] | None = None) -> int:
     version = commands.add_parser("validate-version", help="validate a SemVer package version")
     version.add_argument("--value", required=True)
 
+    receipt = commands.add_parser("receipt", help="bind an ORAS result to a package digest")
+    receipt.add_argument("--metadata", required=True)
+    receipt.add_argument("--push-result", required=True)
+    receipt.add_argument("--registry", default="ghcr.io")
+    receipt.add_argument("--owner", required=True)
+
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
@@ -66,9 +73,16 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_package_artifact(args.metadata, args.artifact)
         elif args.command == "validate-matrix":
             result = {"targets": validate_target_matrix(args.value)}
-        else:
+        elif args.command == "validate-version":
             from .artifacts import _version
             result = {"version": _version(args.value), "valid": True}
+        else:
+            result = build_publication_receipt(
+                metadata_path=args.metadata,
+                push_result_path=args.push_result,
+                registry=args.registry,
+                owner=args.owner,
+            )
     except (OciArtifactError, OSError) as exc:
         print(f"OCI package validation failed: {exc}", file=sys.stderr)
         return 1
