@@ -302,6 +302,73 @@ def verify_package_artifact(metadata_path: str | Path, artifact_path: str | Path
     }
 
 
+
+def build_publication_receipt(
+    *,
+    metadata_path: str | Path,
+    push_result_path: str | Path,
+    registry: str,
+    owner: str,
+) -> dict[str, Any]:
+    """Bind the local package descriptor to the digest returned by ORAS."""
+    descriptor_path = Path(metadata_path)
+    if descriptor_path.is_symlink() or not descriptor_path.is_file():
+        raise OciArtifactError("metadata path must be a regular file")
+    try:
+        metadata = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise OciArtifactError(f"package metadata is not valid UTF-8 JSON: {exc}") from exc
+    metadata = _validate_metadata(metadata)
+
+    result_path = Path(push_result_path)
+    if result_path.is_symlink() or not result_path.is_file():
+        raise OciArtifactError("ORAS push result must be a regular file")
+    try:
+        pushed = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise OciArtifactError(f"ORAS push result is not valid UTF-8 JSON: {exc}") from exc
+    if not isinstance(pushed, dict):
+        raise OciArtifactError("ORAS push result must be a JSON object")
+    digest = pushed.get("digest")
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise OciArtifactError("ORAS push result is missing a valid SHA-256 manifest digest")
+    if pushed.get("artifactType") != ARTIFACT_TYPE:
+        raise OciArtifactError("published OCI artifact type does not match the package descriptor")
+
+    registry_host = registry.strip().lower()
+    if not re.fullmatch(r"[a-z0-9.-]+(?::[0-9]{1,5})?", registry_host):
+        raise OciArtifactError("registry must be a hostname with an optional port")
+    repository_owner = _token(owner.lower(), "registry owner")
+    package_name = metadata["package"]["name"]
+    tag = metadata["package"]["tag"]
+    tagged_reference = f"{registry_host}/{repository_owner}/{package_name}:{tag}"
+    immutable_reference = f"{registry_host}/{repository_owner}/{package_name}@{digest}"
+    pushed_reference = pushed.get("reference")
+    if not isinstance(pushed_reference, str) or pushed_reference != immutable_reference:
+        raise OciArtifactError("ORAS returned a manifest reference that does not match its digest")
+
+    references_as_tags = pushed.get("referenceAsTags")
+    if isinstance(references_as_tags, list) and tagged_reference not in references_as_tags:
+        raise OciArtifactError("ORAS result does not contain the expected package tag")
+
+    return {
+        "schema_version": 1,
+        "published": True,
+        "package": metadata["package"],
+        "component": metadata["component"],
+        "source": metadata["source"],
+        "target": metadata["target"],
+        "artifact": metadata["artifact"],
+        "oci": {
+            "registry": registry_host,
+            "reference": tagged_reference,
+            "immutable_reference": immutable_reference,
+            "digest": digest,
+            "artifact_type": ARTIFACT_TYPE,
+        },
+    }
+
+
 def validate_target_matrix(value: str) -> list[dict[str, Any]]:
     """Validate target entries used by the reusable OCI publish workflow."""
     try:
