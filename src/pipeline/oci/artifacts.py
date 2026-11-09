@@ -559,9 +559,11 @@ def validate_target_matrix(value: str) -> list[dict[str, Any]]:
         target_os = _token(entry.get("target_os"), f"target[{index}].target_os")
         architecture = _token(entry.get("architecture"), f"target[{index}].architecture")
         abi = _token(entry.get("abi"), f"target[{index}].abi")
-        for optional in ("setup_command", "test_command", "build_command", "artifact_test_command", "artifact_path"):
+        for optional in ("setup_command", "test_command", "build_command", "artifact_test_command", "artifact_path", "artifact_media_type"):
             if optional in entry and not isinstance(entry[optional], str):
                 raise OciArtifactError(f"target[{index}].{optional} must be a string")
+        if "artifact_media_type" in entry:
+            _media_type(entry["artifact_media_type"])
         normalized.append({
             **entry,
             "id": target_id,
