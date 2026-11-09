@@ -219,7 +219,7 @@ jobs:
 
       - name: Cache TeX package archives
         if: inputs.language == 'latex' && inputs.cache && inputs.latex-setup-mode == 'install' && inputs.latex-packages-file != '' && hashFiles(inputs.latex-packages-file) != ''
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /var/cache/apt/archives/*.deb
           key: pipeline-texlive-${{ runner.os }}-${{ runner.arch }}-${{ steps.ubuntu-release.outputs.version-id }}-${{ hashFiles(inputs.latex-packages-file) }}
