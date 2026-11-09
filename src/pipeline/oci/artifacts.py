@@ -409,8 +409,11 @@ def stage_package_artifact(
         }
     except Exception:
         try:
-            temporary.unlink(missing_ok=True)
-            if published:
+            if temporary.exists():
+                temporary.chmod(0o600)
+                temporary.unlink(missing_ok=True)
+            if published and destination.exists():
+                destination.chmod(0o600)
                 destination.unlink(missing_ok=True)
         except OSError:
             pass
