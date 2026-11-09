@@ -427,11 +427,17 @@ def stage_package_artifact(
             raise OciArtifactError("package metadata changed while staging")
         temporary.chmod(0o444)
         try:
-            os.link(temporary, destination)
+            if os.name == "nt":
+                # Windows hosted runners do not reliably permit hard-link creation.
+                # A same-directory rename is atomic and refuses an existing target.
+                os.rename(temporary, destination)
+            else:
+                # POSIX hard-link creation is atomic and never replaces a target.
+                os.link(temporary, destination)
+                temporary.unlink()
         except FileExistsError as exc:
             raise OciArtifactError("refusing to overwrite an existing staged package") from exc
         published = True
-        temporary.unlink()
 
         if hashlib.sha256(descriptor_path.read_bytes()).hexdigest() != expected_metadata_sha256:
             raise OciArtifactError("package metadata changed before staging completed")
