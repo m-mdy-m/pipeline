@@ -375,8 +375,8 @@ jobs:
               os.fsync(writer.fileno())
           metadata_copy.chmod(0o444)
           with Path(sys.argv[2]).open("a", encoding="utf-8") as output:
-              output.write(f"artifact_path={result['artifact_path']}\\n")
-              output.write(f"metadata_path={metadata_copy.resolve()}\\n")
+              output.write(f"artifact_path={result['artifact_path']}\n")
+              output.write(f"metadata_path={metadata_copy.resolve()}\n")
           PY
 
       - name: Report dry-run package descriptor
