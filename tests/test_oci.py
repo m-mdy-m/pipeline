@@ -25,8 +25,15 @@ class OciPackageArtifactTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.payload = self.root / "kernel-1.2.1-linux-amd64.tar.gz"
         self.payload.write_bytes(b"deterministic package payload\n")
+        self.staged_paths: list[Path] = []
 
     def tearDown(self) -> None:
+        for path in self.staged_paths:
+            try:
+                if path.exists():
+                    path.chmod(0o600)
+            except OSError:
+                pass
         self.temporary.cleanup()
 
     def prepare(self, *, output: str = "metadata", **overrides: str) -> dict:
