@@ -22,6 +22,7 @@ GitHub Actions and GitLab CI do not need their own copy of that task logic. A sm
 | Run install, lint, build and test for Go, Node.js, Rust, Java, .NET, Python, C/C++ or Docker | [Language toolchains](toolchains.md) |
 | Measure a command several times | [Benchmarks](benchmarking.md) |
 | Build or publish a release | [Releases](releases.md) |
+| Publish installable packages to an OCI registry | [OCI packages](oci-packages.md) |
 | Understand the design | [How it fits together](design.md) |
 | Change pipeline or run its tests | [Development guide](development.md) |
 
