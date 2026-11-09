@@ -262,7 +262,7 @@ jobs:
           TARGET_OS: ${{ matrix.target_os }}
           TARGET_ARCH: ${{ matrix.architecture }}
           TARGET_ABI: ${{ matrix.abi }}
-          ARTIFACT_MEDIA_TYPE: ${{ inputs.artifact-media-type }}
+          ARTIFACT_MEDIA_TYPE: ${{ matrix.artifact_media_type || inputs.artifact-media-type }}
         run: |
           set -euo pipefail
           source_repository="$SOURCE_REPOSITORY_INPUT"
