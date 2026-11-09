@@ -131,6 +131,26 @@ class OciPackageArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(OciArtifactError, "duplicate target matrix id"):
             validate_target_matrix(duplicate)
 
+    def test_target_matrix_supports_per_target_artifact_media_type(self) -> None:
+        value = json.dumps({"include": [
+            {"id": "linux-x86_64", "os": "ubuntu-24.04", "target_os": "linux",
+             "architecture": "x86_64", "abi": "gnu",
+             "artifact_media_type": "application/vnd.pipeline.package.layer.v1.tar+gzip"},
+            {"id": "windows-x86_64", "os": "windows-latest", "target_os": "windows",
+             "architecture": "x86_64", "abi": "ucrt64",
+             "artifact_media_type": "application/zip"},
+        ]})
+        result = validate_target_matrix(value)
+        self.assertEqual(result[1]["artifact_media_type"], "application/zip")
+
+        invalid = json.dumps({"include": [
+            {"id": "windows-x86_64", "os": "windows-latest", "target_os": "windows",
+             "architecture": "x86_64", "abi": "ucrt64",
+             "artifact_media_type": "application/zip; charset=binary"},
+        ]})
+        with self.assertRaisesRegex(OciArtifactError, "valid type/subtype"):
+            validate_target_matrix(invalid)
+
     def test_universal_package_uses_version_only_tag(self) -> None:
         result = self.prepare(
             output="universal",

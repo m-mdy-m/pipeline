@@ -427,11 +427,17 @@ def stage_package_artifact(
             raise OciArtifactError("package metadata changed while staging")
         temporary.chmod(0o444)
         try:
-            os.link(temporary, destination)
+            if os.name == "nt":
+                # Windows hosted runners do not reliably permit hard-link creation.
+                # A same-directory rename is atomic and refuses an existing target.
+                os.rename(temporary, destination)
+            else:
+                # POSIX hard-link creation is atomic and never replaces a target.
+                os.link(temporary, destination)
+                temporary.unlink()
         except FileExistsError as exc:
             raise OciArtifactError("refusing to overwrite an existing staged package") from exc
         published = True
-        temporary.unlink()
 
         if hashlib.sha256(descriptor_path.read_bytes()).hexdigest() != expected_metadata_sha256:
             raise OciArtifactError("package metadata changed before staging completed")
@@ -559,9 +565,11 @@ def validate_target_matrix(value: str) -> list[dict[str, Any]]:
         target_os = _token(entry.get("target_os"), f"target[{index}].target_os")
         architecture = _token(entry.get("architecture"), f"target[{index}].architecture")
         abi = _token(entry.get("abi"), f"target[{index}].abi")
-        for optional in ("setup_command", "test_command", "build_command", "artifact_test_command", "artifact_path"):
+        for optional in ("setup_command", "test_command", "build_command", "artifact_test_command", "artifact_path", "artifact_media_type"):
             if optional in entry and not isinstance(entry[optional], str):
                 raise OciArtifactError(f"target[{index}].{optional} must be a string")
+        if "artifact_media_type" in entry:
+            _media_type(entry["artifact_media_type"])
         normalized.append({
             **entry,
             "id": target_id,
