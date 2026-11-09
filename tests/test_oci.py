@@ -105,7 +105,7 @@ class OciPackageArtifactTests(unittest.TestCase):
     def test_target_matrix_requires_unique_platform_identity(self) -> None:
         value = json.dumps({"include": [
             {"id": "linux-amd64", "os": "ubuntu-24.04", "target_os": "linux",
-             "architecture": "amd64", "abi": "gnu"},
+             "architecture": "x86_64", "abi": "gnu"},
             {"id": "windows-amd64", "os": "windows-2025", "target_os": "windows",
              "architecture": "amd64", "abi": "ucrt64"},
         ]})
