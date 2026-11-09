@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: main
+      source-ref:
+        description: "Component branch or tag to package; defaults to the triggering Git ref"
+        required: false
+        type: string
+        default: ""
       package-name:
         description: "Lowercase GHCR package repository name, without an owner or registry host"
         required: true
@@ -85,6 +90,11 @@ on:
         required: false
         type: boolean
         default: false
+      allow-manual-publish:
+        description: "Explicitly allow GHCR publication from workflow_dispatch when source-ref is a release tag"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -94,6 +104,7 @@ jobs:
     if: >-
       inputs.dry-run == true ||
       startsWith(github.ref, 'refs/tags/v') ||
+      (inputs.allow-manual-publish == true && github.event_name == 'workflow_dispatch') ||
       (inputs.allow-branch-publish == true &&
        github.event_name == 'push' &&
        github.ref == 'refs/heads/feat/oci-artifacts-ghcr')
@@ -112,8 +123,16 @@ jobs:
       - name: Check out the component repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.source-ref || github.ref }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Resolve the checked-out source revision
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'revision=%s\n' "$(git rev-parse --verify HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check out the shared Pipeline engine
         uses: actions/checkout@v7
@@ -137,6 +156,7 @@ jobs:
           PACKAGE_VERSION_INPUT: ${{ inputs.version }}
           COMPONENT_ID: ${{ inputs.component-id }}
           BUILD_MATRIX_JSON: ${{ inputs.build-matrix-json }}
+          SOURCE_REF_INPUT: ${{ inputs.source-ref }}
         run: |
           set -euo pipefail
           [[ "$PACKAGE_NAME" =~ ^[a-z0-9][a-z0-9._-]{0,127}$ ]] || {
@@ -155,7 +175,20 @@ jobs:
             exit 2
           }
           python -m pipeline.oci.cli validate-version --value "$package_version" >/dev/null
-          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* && "$package_version" != "${GITHUB_REF_NAME#v}" ]]; then
+          source_ref="$SOURCE_REF_INPUT"
+          if [[ -z "$source_ref" ]]; then source_ref="$GITHUB_REF"; fi
+          source_tag=""
+          if [[ "$source_ref" == refs/tags/* ]]; then
+            source_tag="${source_ref#refs/tags/}"
+          elif git show-ref --verify --quiet "refs/tags/$source_ref"; then
+            source_tag="$source_ref"
+          fi
+          if [[ -n "$source_tag" ]]; then
+            [[ "$source_tag" == v* && "$package_version" == "${source_tag#v}" ]] || {
+              echo "package version must match the selected v-prefixed source tag" >&2
+              exit 2
+            }
+          elif [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* && "$package_version" != "${GITHUB_REF_NAME#v}" ]]; then
             echo "version must match the v-prefixed Git tag exactly" >&2
             exit 2
           fi
@@ -257,7 +290,7 @@ jobs:
           VARIANT: ${{ inputs.variant }}
           PACKAGE_VERSION: ${{ steps.validate.outputs.version }}
           SOURCE_REPOSITORY_INPUT: ${{ inputs.source-repository }}
-          SOURCE_REVISION_INPUT: ${{ inputs.source-revision }}
+          SOURCE_REVISION_INPUT: ${{ inputs.source-revision || steps.source.outputs.revision }}
           TARGET_ID: ${{ matrix.id }}
           TARGET_OS: ${{ matrix.target_os }}
           TARGET_ARCH: ${{ matrix.architecture }}
@@ -416,7 +449,7 @@ jobs:
           PACKAGE_NAME: ${{ inputs.package-name }}
           PACKAGE_VERSION: ${{ steps.validate.outputs.version }}
           SOURCE_REPOSITORY_INPUT: ${{ inputs.source-repository }}
-          SOURCE_REVISION_INPUT: ${{ inputs.source-revision }}
+          SOURCE_REVISION_INPUT: ${{ inputs.source-revision || steps.source.outputs.revision }}
           ARTIFACT_MEDIA_TYPE: ${{ matrix.artifact_media_type || inputs.artifact-media-type }}
           ARTIFACT_PATH: ${{ steps.stage.outputs.artifact_path }}
           METADATA_PATH: ${{ steps.stage.outputs.metadata_path }}
