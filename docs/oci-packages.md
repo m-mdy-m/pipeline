@@ -135,6 +135,9 @@ python -m pipeline.oci.cli prepare --help
 # Verify local package bytes
 python -m pipeline.oci.cli verify --help
 
+# Stage an immutable, re-verified copy for publishing
+python -m pipeline.oci.cli stage --help
+
 # Validate a release target matrix
 python -m pipeline.oci.cli validate-matrix --value '{"include":[{"id":"linux-amd64","os":"ubuntu-24.04","target_os":"linux","architecture":"x86_64","abi":"gnu"}]}'
 
