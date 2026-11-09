@@ -39,7 +39,7 @@ class OciPackageArtifactTests(unittest.TestCase):
             "source_revision": "a" * 40,
             "target_id": "linux-amd64",
             "target_os": "linux",
-            "architecture": "amd64",
+            "architecture": "x86_64",
             "abi": "gnu",
         }
         values.update(overrides)
