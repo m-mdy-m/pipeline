@@ -95,6 +95,15 @@ class YamllintConsumerPathTests(unittest.TestCase):
 
 
 class SourceReleaseWorkflowContractTests(unittest.TestCase):
+    def test_source_release_preserves_synthetic_pull_request_branch_for_dry_run(self) -> None:
+        workflow = (WORKFLOWS / "source-release.yml").read_text(encoding="utf-8")
+        binding = workflow.split("      - name: Bind Pipeline context to the selected source tag", 1)[1]
+        binding = binding.split("      - name: Verify native log.c logger initialization", 1)[0]
+        self.assertIn('"${PIPELINE_REF_TYPE:-}" == "branch"', binding)
+        self.assertIn('"$SOURCE_DRY_RUN" == "true"', binding)
+        self.assertIn("refs/pull/*", binding)
+        self.assertNotIn('"$GITHUB_REF" == refs/heads/*', binding)
+
     def test_source_release_prepare_writes_outputs_to_the_current_step(self) -> None:
         workflow = (WORKFLOWS / "source-release.yml").read_text(encoding="utf-8")
         prepare = workflow.split("      - name: Prepare exact source snapshot and release notes", 1)[1]
