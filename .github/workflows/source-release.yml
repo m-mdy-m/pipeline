@@ -159,16 +159,27 @@ jobs:
         shell: bash
         env:
           SOURCE_REF_INPUT: ${{ inputs.source-ref }}
+          SOURCE_DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
+
+          # A caller may request a branch dry-run without an explicit source tag.
+          # Keep the branch context created by the GitHub adapter in that case.
+          if [[ -z "$SOURCE_REF_INPUT" && "$GITHUB_REF" == refs/heads/* && "$SOURCE_DRY_RUN" == "true" ]]; then
+            echo "Keeping branch context for a non-publishing source dry-run."
+            exit 0
+          fi
+
           source_ref="${SOURCE_REF_INPUT:-$GITHUB_REF}"
           case "$source_ref" in
             refs/tags/*) tag_name="${source_ref#refs/tags/}" ;;
             *)
-              if git show-ref --verify --quiet "refs/tags/$source_ref"; then
+              if [[ -z "$SOURCE_REF_INPUT" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+                tag_name="$GITHUB_REF_NAME"
+              elif git show-ref --verify --quiet "refs/tags/$source_ref"; then
                 tag_name="$source_ref"
               else
-                echo "::error title=Invalid source ref::Source Release requires an existing tag; got '$source_ref'." >&2
+                echo "::error title=Invalid source ref::Source Release requires an existing tag unless dry-run is enabled on a branch; got '$source_ref'." >&2
                 exit 2
               fi
               ;;
