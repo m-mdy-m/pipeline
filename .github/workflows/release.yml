@@ -26,6 +26,11 @@ on:
         required: false
         type: string
         default: "dist/*"
+      asset-preparation-command:
+        description: "Optional project-owned command that adds release metadata/assets after all targets finish and before release checksums/manifests are assembled"
+        required: false
+        type: string
+        default: ""
       artifact-test-command:
         description: "Optional command that inspects the downloaded artifact on the target runner"
         required: false
@@ -136,6 +141,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      source_commit: ${{ steps.version.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -263,6 +269,7 @@ jobs:
             --ref-name "$ref_name" \
             --commit-sha "$commit_sha" \
             --dry-run "$DRY_RUN"
+          printf "commit_sha=%s\n" "$commit_sha" >> "$GITHUB_OUTPUT"
           python - <<'PY'
           import json
           import os
@@ -638,6 +645,15 @@ jobs:
           path: release-assets
           merge-multiple: false
 
+      - name: Check out project source for release asset preparation
+        if: inputs.asset-preparation-command != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source-ref || github.ref }}
+          path: component-source
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Check out the shared release helper
         uses: actions/checkout@v7
         with:
@@ -646,6 +662,20 @@ jobs:
           path: .pipeline
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Prepare project-owned release metadata and extra assets
+        if: inputs.asset-preparation-command != ''
+        working-directory: component-source
+        shell: bash
+        env:
+          ASSET_PREPARATION_COMMAND: ${{ inputs.asset-preparation-command }}
+          RELEASE_ASSETS_DIRECTORY: ${{ github.workspace }}/release-assets
+          PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PIPELINE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          PIPELINE_SOURCE_SHA: ${{ needs.prepare.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$ASSET_PREPARATION_COMMAND"
 
       - name: Assemble the selected release asset profile
         uses: ./.pipeline/.github/actions/release-assets
