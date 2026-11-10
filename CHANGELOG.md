@@ -13,6 +13,9 @@
 
 ### Fixed
 
+- Preserve the normalized branch context for non-publishing Source Release
+  dry-runs on synthetic pull-request merge refs instead of rejecting
+  `refs/pull/<number>/merge` as a non-tag source.
 - Make the reusable YAML lint workflow ignore optional provider/configuration paths that are absent from consumer repositories.
 - Add a regression test that executes the reusable lint script in a minimal consumer layout.
 
