@@ -3,6 +3,7 @@ name: Source Release Smoke Test
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
     paths:
       - "CHANGELOG.md"
       - "Makefile"
