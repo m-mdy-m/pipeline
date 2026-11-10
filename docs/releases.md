@@ -103,13 +103,13 @@ component-specific behavior.
 
 Example:
 
-```yaml
+~~~yaml
 aggregate-command: >-
   python3 scripts/generate-release-metadata.py
   --tag "$PIPELINE_RELEASE_TAG"
   --artifact-dir "$PIPELINE_RELEASE_ARTIFACTS_DIRECTORY"
   --output "$PIPELINE_RELEASE_ARTIFACTS_DIRECTORY/backend-$PIPELINE_RELEASE_VERSION.json"
-```
+~~~
 
 Leave this input empty when each target independently produces all files
 needed for its own release assets; the default workflow remains unchanged.
