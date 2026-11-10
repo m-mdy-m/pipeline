@@ -77,6 +77,9 @@ on:
       submodule-token:
         description: "Optional token with read access to private GitHub submodules when recursive mode is enabled"
         required: false
+      release-token:
+        description: "Optional token with Contents: write and Workflows: write for releases whose tagged commit changes workflow files"
+        required: false
     outputs:
       version:
         description: "Resolved release version"
@@ -300,4 +303,4 @@ jobs:
           prerelease: ${{ needs.package.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.package.outputs.prerelease != 'true' }}
           overwrite_files: false
-          token: ${{ github.token }}
+          token: ${{ secrets.release-token || github.token }}
