@@ -4,10 +4,18 @@
 
 ### Added
 
+- Add an optional project-owned asset-preparation hook after all release
+  matrix artifacts are downloaded and before shared asset normalization,
+  checksums, manifests, signing and attestations. Expose the exact resolved
+  tag, SemVer and source commit to the hook without changing existing callers.
+
 - Add provider-neutral OCI package descriptors and verification, plus a reusable target-matrix GHCR publisher using ORAS with immutable digest receipts and pullback verification.
 
 ### Fixed
 
+- Preserve the normalized branch context for non-publishing Source Release
+  dry-runs on synthetic pull-request merge refs instead of rejecting
+  `refs/pull/<number>/merge` as a non-tag source.
 - Make the reusable YAML lint workflow ignore optional provider/configuration paths that are absent from consumer repositories.
 - Add a regression test that executes the reusable lint script in a minimal consumer layout.
 
