@@ -78,6 +78,42 @@ For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix 
 
 A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
+### Aggregate release-level assets after the target matrix
+
+Some component formats require one metadata document assembled from outputs
+produced by several native matrix targets. Use the optional
+`aggregate-command` for that project-owned aggregation step. Pipeline runs it
+once in the assembly job only after every target build/test has succeeded and
+all target artifacts have been downloaded. The source checkout and shared
+Pipeline helper are available, and the command runs before final asset
+normalization, checksums and release-manifest generation.
+
+The command runs from `working-directory` and receives:
+
+- `PIPELINE_RELEASE_TAG`: the exact prepared tag (or deterministic dry-run ref).
+- `PIPELINE_RELEASE_VERSION`: the prepared SemVer version.
+- `PIPELINE_RELEASE_ARTIFACTS_DIRECTORY`: the downloaded `release-assets/`
+  directory, with one subdirectory per matrix artifact.
+
+The project command may validate and combine target descriptors into one
+canonical release-level file at the root of that directory. That file is then
+included in the normal release asset assembly, checksum inventory and final
+GitHub Release. Pipeline does not interpret the metadata schema or implement
+component-specific behavior.
+
+Example:
+
+```yaml
+aggregate-command: >-
+  python3 scripts/generate-release-metadata.py
+  --tag "$PIPELINE_RELEASE_TAG"
+  --artifact-dir "$PIPELINE_RELEASE_ARTIFACTS_DIRECTORY"
+  --output "$PIPELINE_RELEASE_ARTIFACTS_DIRECTORY/backend-$PIPELINE_RELEASE_VERSION.json"
+```
+
+Leave this input empty when each target independently produces all files
+needed for its own release assets; the default workflow remains unchanged.
+
 Set `asset-profile: gitea` to opt into a richer, Gitea-style asset layout without changing the default output of existing consumers. The profile preserves each original artifact and adds an XZ-compressed `.xz` variant, a `.sha256` sidecar for every payload, a machine-readable `manifest.json` with version/tag/commit and per-target artifact metadata, and a top-level `SHA256SUMS`. Existing `.xz` siblings are reused only when they decompress to the exact original bytes; collisions or stale sidecars fail the release rather than silently publishing ambiguous files.
 
 The shared verifier is provider-neutral and can be used by GitHub Actions, GitLab CI, or a local release script:
