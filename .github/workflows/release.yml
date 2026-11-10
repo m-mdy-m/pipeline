@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: ""
+      aggregate-command:
+        description: "Optional project-owned command that combines outputs from every successful matrix target into release-level assets"
+        required: false
+        type: string
+        default: ""
       e2e-setup-command:
         description: "Optional project-owned command to provision an emulator, simulator, device, or test service before E2E"
         required: false
@@ -622,6 +627,12 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source-ref || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
       - uses: actions/download-artifact@v8
         with:
           name: release-notes
@@ -646,6 +657,19 @@ jobs:
           path: .pipeline
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Run project-owned release aggregation
+        if: inputs.aggregate-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          AGGREGATE_COMMAND: ${{ inputs.aggregate-command }}
+          PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PIPELINE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          PIPELINE_RELEASE_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/release-assets
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$AGGREGATE_COMMAND"
 
       - name: Assemble the selected release asset profile
         uses: ./.pipeline/.github/actions/release-assets
