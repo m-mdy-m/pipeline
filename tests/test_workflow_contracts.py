@@ -94,6 +94,16 @@ class YamllintConsumerPathTests(unittest.TestCase):
                 self.assertNotIn(absent, arguments)
 
 
+class SourceReleaseWorkflowContractTests(unittest.TestCase):
+    def test_source_release_prepare_writes_outputs_to_the_current_step(self) -> None:
+        workflow = (WORKFLOWS / "source-release.yml").read_text(encoding="utf-8")
+        prepare = workflow.split("      - name: Prepare exact source snapshot and release notes", 1)[1]
+        prepare = prepare.split("      - name: Scan the actual published source", 1)[0]
+        self.assertIn('export PIPELINE_OUTPUT_FILE="$GITHUB_OUTPUT"', prepare)
+        self.assertIn("id: prepare", prepare)
+        self.assertIn("tag_label: ${{ steps.prepare.outputs.tag_label }}", workflow)
+
+
 class WorkflowInventoryTests(unittest.TestCase):
     def test_required_repository_workflows_exist(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")

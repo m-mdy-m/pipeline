@@ -217,7 +217,11 @@ jobs:
           SOURCE_SENSITIVE_ALLOWLIST_PATTERNS: ${{ inputs.source-sensitive-allowlist-patterns }}
           SOURCE_GITLEAKS_ALLOWLIST_PATH: ${{ inputs.source-gitleaks-allowlist-path }}
           PYTHONPATH: .pipeline/src
-        run: python -m pipeline.release prepare
+        run: |
+          # The provider bootstrap step exports its own GITHUB_OUTPUT path.
+          # This step must write outputs to its current step-local file.
+          export PIPELINE_OUTPUT_FILE="$GITHUB_OUTPUT"
+          python -m pipeline.release prepare
 
       - name: Scan the actual published source with Gitleaks
         shell: bash
