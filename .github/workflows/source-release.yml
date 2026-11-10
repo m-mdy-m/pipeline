@@ -166,11 +166,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # A caller may request a branch dry-run without an explicit source tag.
-          # Keep the branch context created by the GitHub adapter in that case.
-          if [[ -z "$SOURCE_REF_INPUT" && "$GITHUB_REF" == refs/heads/* && "$SOURCE_DRY_RUN" == "true" ]]; then
-            echo "Keeping branch context for a non-publishing source dry-run."
-            exit 0
+          # A caller may request a non-publishing branch/PR dry-run without
+          # an explicit source tag. GitHub exposes pull_request runs as
+          # refs/pull/<number>/merge; the provider bootstrap has already bound
+          # that checked-out snapshot to a branch-style Pipeline identity.
+          if [[ -z "$SOURCE_REF_INPUT" && "$SOURCE_DRY_RUN" == "true" ]]; then
+            case "$GITHUB_REF" in
+              refs/heads/*|refs/pull/*)
+                echo "Keeping branch context for a non-publishing source dry-run."
+                exit 0
+                ;;
+            esac
           fi
 
           source_ref="${SOURCE_REF_INPUT:-$GITHUB_REF}"
