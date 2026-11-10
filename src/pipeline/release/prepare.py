@@ -54,6 +54,7 @@ def prepare() -> None:
 
     section_for_notes: str | None = None
     dry_run_branch = env("SOURCE_DRY_RUN", "false").lower() == "true" and PipelineContext.from_environment(workspace=REPO_ROOT).ref_type != "tag"
+    development_tag = prerelease and version.startswith("0.0.0-dev.")
     if not changelog_nonempty:
         reason = "not found" if changelog_entry is None else "empty or whitespace-only"
         if missing_policy == "fail":
@@ -71,7 +72,7 @@ def prepare() -> None:
             # Only fall back when the synthetic branch version has no heading at all;
             # duplicate or malformed sections must still fail closed.
             has_exact_heading = any(heading_info(line)[1] == version for line in changelog_text.splitlines())
-            if not dry_run_branch or has_exact_heading:
+            if not (dry_run_branch or development_tag) or has_exact_heading:
                 raise
             section_for_notes = extract_dry_run_section(changelog_text, changelog_entry.path)
 

@@ -13,9 +13,16 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SOURCE_ROOT))
 os.environ["PYTHONPATH"] = str(SOURCE_ROOT) + os.pathsep + os.environ.get("PYTHONPATH", "")
 import pipeline.release as sr
+from pipeline.release.runtime import TAG_RE
 
 
 class ChangelogTests(unittest.TestCase):
+    def test_source_release_accepts_numeric_development_tags(self) -> None:
+        self.assertIsNotNone(TAG_RE.fullmatch("v0.0.0-dev.42"))
+        self.assertIsNotNone(TAG_RE.fullmatch("v1.2.3-alpha.1"))
+        self.assertIsNotNone(TAG_RE.fullmatch("v1.2.3"))
+        self.assertIsNone(TAG_RE.fullmatch("v0.0.0-dev.abcdef0"))
+
     def test_common_heading_formats(self) -> None:
         for heading in (
             "## [1.2.3]",

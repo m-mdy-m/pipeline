@@ -11,7 +11,7 @@ SCAN_TREE = WORK_DIR / "secret-scan"
 RELEASE_ASSETS = WORK_DIR / "release-assets"
 REPORTS = WORK_DIR / "reports"
 VERSION_RE = re.compile(r"^v?(?P<version>\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)$")
-TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$")
+TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-(?:dev\.\d+|alpha\.\d+|beta\.\d+|rc\.\d+))?$")
 SEMVER_RE = r"\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?"
 
 DEFAULT_SENSITIVE_PATTERNS = (

@@ -198,6 +198,8 @@ jobs:
 
 The source workflow can include pinned submodule contents, omit submodules, or stop when submodules are present. Choose the behavior explicitly. It also checks sensitive paths, scans the published files with Gitleaks, validates the ZIP, and writes `manifest.json` and `SHA256SUMS`.
 
+The optional `source-ref` input lets an orchestration workflow publish a tag that it created for a previously completed branch push. The helper checks out that exact tag and binds its provider-neutral context to the tag's commit before reading any source files. This keeps generated development releases attached to the commit that passed CI, rather than to the current default-branch head.
+
 Use `dry-run: true` to test the packaging path without publishing.
 
 ## Version and changelog rules
@@ -206,6 +208,10 @@ Tags use this format:
 
 - Stable: `vMAJOR.MINOR.PATCH`, for example `v1.1.1`.
 - Prerelease: `vMAJOR.MINOR.PATCH-alpha.N`, `-beta.N`, or `-rc.N`.
+
+- Development snapshots: `v0.0.0-dev.N`. CI assigns a unique numeric identifier to each successful pushed-branch run.
+
+For a development tag, the source-release helper uses the exact `[Unreleased]` changelog section when present. If the project has no `[Unreleased]` section yet, it falls back to the newest version-specific section so the release still contains project-authored notes.
 
 Before creating a stable tag, add a matching heading to the changelog:
 

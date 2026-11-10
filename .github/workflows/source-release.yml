@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: main
+      source-ref:
+        description: "Exact tag ref containing the source snapshot; defaults to the triggering Git ref"
+        required: false
+        type: string
+        default: ""
       changelog-path:
         description: "Explicit tracked changelog path. Empty means strict auto-detection of one supported candidate"
         required: false
@@ -82,6 +87,9 @@ on:
       prerelease:
         description: "Whether the version is a prerelease"
         value: ${{ jobs.package.outputs.prerelease }}
+      release-tag:
+        description: "Exact source tag used for the release"
+        value: ${{ jobs.package.outputs.tag_label }}
 
 permissions:
   contents: read
@@ -96,11 +104,12 @@ jobs:
       version: ${{ steps.prepare.outputs.version }}
       archive_name: ${{ steps.prepare.outputs.archive_name }}
       prerelease: ${{ steps.prepare.outputs.prerelease }}
+      tag_label: ${{ steps.prepare.outputs.tag_label }}
     steps:
       - name: Check out the exact caller snapshot
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source-ref || github.sha }}
           fetch-depth: 0
           submodules: false
 
@@ -146,6 +155,30 @@ jobs:
           PYTHONPATH: .pipeline/src
         run: python -m pipeline.providers.github bootstrap
 
+      - name: Bind Pipeline context to the selected source tag
+        shell: bash
+        env:
+          SOURCE_REF_INPUT: ${{ inputs.source-ref }}
+        run: |
+          set -euo pipefail
+          source_ref="${SOURCE_REF_INPUT:-$GITHUB_REF}"
+          case "$source_ref" in
+            refs/tags/*) tag_name="${source_ref#refs/tags/}" ;;
+            *)
+              if git show-ref --verify --quiet "refs/tags/$source_ref"; then
+                tag_name="$source_ref"
+              else
+                echo "::error title=Invalid source ref::Source Release requires an existing tag; got '$source_ref'." >&2
+                exit 2
+              fi
+              ;;
+          esac
+          commit_sha="$(git rev-parse --verify "${tag_name}^{commit}")"
+          {
+            echo "PIPELINE_REF_TYPE=tag"
+            echo "PIPELINE_REF_NAME=$tag_name"
+            echo "PIPELINE_SHA=$commit_sha"
+          } >> "$GITHUB_ENV"
 
       - name: Verify native log.c logger initialization
         shell: bash
@@ -230,7 +263,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.package.outputs.tag_label }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -249,7 +282,7 @@ jobs:
       - name: Create the GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.package.outputs.tag_label }}
           name: Source Release ${{ needs.package.outputs.version }}
           body_path: release-notes.md
           files: release-assets/*
