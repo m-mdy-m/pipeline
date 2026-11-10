@@ -78,6 +78,28 @@ For multi-platform releases, pass a JSON `build-matrix-json` value. Each matrix 
 
 A release build must create at least one file matching `artifact-path`. A failed test or build prevents publication.
 
+### Prepare project-owned metadata from the complete target set
+
+Some component publishers need to create one release metadata document only after every native matrix target has produced its archive and checksum. Set the optional `asset-preparation-command` to run a project-owned generator in the tagged source checkout after all target artifacts have been downloaded and before the shared assembler creates the flat asset set, `SHA256SUMS`, optional manifest, signatures and attestations.
+
+The command runs once on the Ubuntu assemble runner. Pipeline checks out the exact selected `source-ref` (or triggering ref) into `component-source/` with full tag history and passes:
+
+- `PIPELINE_RELEASE_TAG`: validated release tag.
+- `PIPELINE_RELEASE_VERSION`: parsed SemVer.
+- `PIPELINE_SOURCE_SHA`: exact commit resolved by the prepare job.
+- `RELEASE_ASSETS_DIRECTORY`: absolute path to the downloaded per-target artifacts.
+
+The project-owned generator must verify every input artifact and write any additional asset into a top-level directory under `$RELEASE_ASSETS_DIRECTORY` whose name begins with `release-build-` (for example, `release-build-metadata/`). The shared assembler then includes it in the same normalized asset set and computes the final checksum/manifest. The hook is not run unless configured; existing release workflows remain unchanged.
+
+~~~yaml
+asset-preparation-command: >-
+  python scripts/generate-release-metadata.py
+  --tag "$PIPELINE_RELEASE_TAG"
+  --source-revision "$PIPELINE_SOURCE_SHA"
+  --artifact-dir "$RELEASE_ASSETS_DIRECTORY"
+  --output "$RELEASE_ASSETS_DIRECTORY/release-build-metadata/component-$PIPELINE_RELEASE_VERSION.json"
+~~~
+
 Set `asset-profile: gitea` to opt into a richer, Gitea-style asset layout without changing the default output of existing consumers. The profile preserves each original artifact and adds an XZ-compressed `.xz` variant, a `.sha256` sidecar for every payload, a machine-readable `manifest.json` with version/tag/commit and per-target artifact metadata, and a top-level `SHA256SUMS`. Existing `.xz` siblings are reused only when they decompress to the exact original bytes; collisions or stale sidecars fail the release rather than silently publishing ambiguous files.
 
 The shared verifier is provider-neutral and can be used by GitHub Actions, GitLab CI, or a local release script:
