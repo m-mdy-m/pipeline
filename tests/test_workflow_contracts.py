@@ -244,6 +244,72 @@ class StructuralContractTests(unittest.TestCase):
                 with self.subTest(workflow=path.name, job=name):
                     self.assertEqual(set(needs) - set(jobs), set())
 
+    def test_release_asset_preparation_hook_is_ordered_and_bound_to_exact_tag(self) -> None:
+        path = WORKFLOWS / "release.yml"
+        workflow = load_yaml(path)
+        call = triggers(workflow)["workflow_call"]
+        self.assertIn("asset-preparation-command", call["inputs"])
+        self.assertFalse(call["inputs"]["asset-preparation-command"]["required"])
+        self.assertEqual(call["inputs"]["asset-preparation-command"]["default"], "")
+
+        prepare = workflow["jobs"]["prepare"]
+        self.assertEqual(
+            prepare["outputs"]["source_commit"],
+            "${{ steps.version.outputs.commit_sha }}",
+        )
+        version_step = next(step for step in prepare["steps"] if step.get("id") == "version")
+        self.assertIn('printf "commit_sha=%s\\n" "$commit_sha"', version_step["run"])
+
+        assemble = workflow["jobs"]["assemble"]
+        needs = assemble.get("needs", [])
+        needs = [needs] if isinstance(needs, str) else needs
+        self.assertIn("build", needs)
+        steps = assemble["steps"]
+        matrix_download = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("uses") == "actions/download-artifact@v8"
+            and step.get("with", {}).get("pattern") == "release-build-*"
+        )
+        source_checkout = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Check out project source for release asset preparation"
+        )
+        preparation = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Prepare project-owned release metadata and extra assets"
+        )
+        assembly = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Assemble the selected release asset profile"
+        )
+        self.assertLess(matrix_download, source_checkout)
+        self.assertLess(source_checkout, preparation)
+        self.assertLess(preparation, assembly)
+
+        hook = steps[preparation]
+        self.assertEqual(hook["if"], "inputs.asset-preparation-command != ''")
+        self.assertEqual(hook["working-directory"], "component-source")
+        self.assertEqual(
+            hook["env"]["PIPELINE_SOURCE_SHA"],
+            "${{ needs.prepare.outputs.source_commit }}",
+        )
+        self.assertEqual(
+            hook["env"]["PIPELINE_RELEASE_TAG"],
+            "${{ needs.prepare.outputs.release_tag }}",
+        )
+        self.assertEqual(
+            hook["env"]["PIPELINE_RELEASE_VERSION"],
+            "${{ needs.prepare.outputs.version }}",
+        )
+        self.assertEqual(
+            hook["env"]["RELEASE_ASSETS_DIRECTORY"],
+            "${{ github.workspace }}/release-assets",
+        )
+
     def test_local_uses_references_exist_and_reusable_workflows_are_callable(self) -> None:
         for path in [*sorted(WORKFLOWS.glob("*.yml")), *sorted(ACTIONS.glob("*/action.yml"))]:
             for target in re.findall(r"uses:\s*(\./\.github/[^\s#]+)", path.read_text(encoding="utf-8")):
