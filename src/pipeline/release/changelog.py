@@ -46,16 +46,14 @@ def decode_changelog(entry: TreeEntry | None) -> str | None:
 def heading_info(line: str) -> tuple[int | None, str | None]:
     stripped = line.strip()
     level: int | None = None
-    match = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", stripped)
+    match = re.match(r"^\\s{0,3}(#{1,6})\\s+(.+?)\\s*#*\\s*$", stripped)
     if match:
         level, title = len(match.group(1)), match.group(2).strip()
     else:
-        # Common text-only headings are accepted too, but section boundaries for
-        # these are detected by the next recognized version heading.
         title = stripped
-    title = re.sub(r"^(?:release|version|changes\s+in\s+version)\s*[:#-]?\s+", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"^(?:release|version|changes\\s+in\\s+version)\\s*[:#-]?\\s+", "", title, flags=re.IGNORECASE)
     pattern = re.compile(
-        rf"^\[?v?(?P<version>{SEMVER_RE})\]?(?:\s*(?:[-–—:]\s*.*)?)?$",
+        rf"^\\[?v?(?P<version>{SEMVER_RE})\\]?(?:\\s*(?:[-–—:]\\s*.*)?)?$",
         re.IGNORECASE,
     )
     version_match = pattern.match(title)
@@ -68,7 +66,7 @@ def extract_unreleased_section(changelog: str, path: str) -> str:
     lines = changelog.splitlines()
     matches: list[tuple[int, int | None]] = []
     for idx, line in enumerate(lines):
-        match = re.match(r"^\s{0,3}(#{1,6})\s+\[?Unreleased\]?\s*$", line, re.IGNORECASE)
+        match = re.match(r"^\\s{0,3}(#{1,6})\\s+\\[?Unreleased\\]?\\s*$", line, re.IGNORECASE)
         if match:
             matches.append((idx, len(match.group(1))))
     if len(matches) != 1:
@@ -79,15 +77,15 @@ def extract_unreleased_section(changelog: str, path: str) -> str:
     start, level = matches[0]
     end = len(lines)
     for idx in range(start + 1, len(lines)):
-        match = re.match(r"^\s{0,3}(#{1,6})\s+", lines[idx])
+        match = re.match(r"^\\s{0,3}(#{1,6})\\s+", lines[idx])
         if match and len(match.group(1)) <= level:
             end = idx
             break
-    section = "\n".join(lines[start:end]).strip()
+    section = "\\n".join(lines[start:end]).strip()
     body_lines = [line for line in lines[start + 1:end] if line.strip()]
-    if not any(not re.match(r"^\s{0,3}#{1,6}\s+", line) for line in body_lines):
+    if not any(not re.match(r"^\\s{0,3}#{1,6}\\s+", line) for line in body_lines):
         raise ReleaseError(f"The Unreleased section in '{path}' is empty")
-    return section + "\n"
+    return section + "\\n"
 
 
 def extract_version_section(changelog: str, version: str, path: str) -> str:
@@ -116,34 +114,43 @@ def extract_version_section(changelog: str, version: str, path: str) -> str:
         if level is not None and next_level is not None and next_level <= level:
             end = idx
             break
-        if level is None and re.match(r"^\s{0,3}#{1,2}\s+", lines[idx]):
+        if level is None and re.match(r"^\\s{0,3}#{1,2}\\s+", lines[idx]):
             end = idx
             break
-    section = "\n".join(lines[start:end]).strip()
+    section = "\\n".join(lines[start:end]).strip()
     if not section:
         raise ReleaseError(f"Version section {version} in '{path}' is empty")
-    return section + "\n"
+    return section + "\\n"
 
 
 def extract_dry_run_section(changelog: str, path: str) -> str:
     """Resolve branch dry-run notes without requiring an Unreleased heading.
 
-    Keep an explicit Unreleased section authoritative. For release-only
-    changelogs, use the first versioned section (Keep a Changelog order is
-    newest first) as the informational dry-run notes.
+    A populated Unreleased section remains authoritative. If it is present but
+    empty, use the newest versioned section (Keep a Changelog order is newest
+    first), just as we do when a release-only changelog has no Unreleased
+    heading. Malformed or duplicate Unreleased sections still fail closed.
     """
     unreleased_count = sum(
-        bool(re.match(r"^\s{0,3}(#{1,6})\s+\[?Unreleased\]?\s*$", line, re.IGNORECASE))
+        bool(re.match(r"^\\s{0,3}(#{1,6})\\s+\\[?Unreleased\\]?\\s*$", line, re.IGNORECASE))
         for line in changelog.splitlines()
     )
+    empty_unreleased_error: ReleaseError | None = None
     if unreleased_count:
-        return extract_unreleased_section(changelog, path)
+        try:
+            return extract_unreleased_section(changelog, path)
+        except ReleaseError as exc:
+            if str(exc) != f"The Unreleased section in '{path}' is empty":
+                raise
+            empty_unreleased_error = exc
 
     for line in changelog.splitlines():
         _, version = heading_info(line)
         if version is not None:
             return extract_version_section(changelog, version, path)
 
+    if empty_unreleased_error is not None:
+        raise empty_unreleased_error
     raise ReleaseError(
         f"Dry-run changelog '{path}' must contain an 'Unreleased' section "
         "or at least one version-specific section."
