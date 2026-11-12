@@ -79,6 +79,21 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertIn("upload_url?name=$encoded_name", self.publisher)
         self.assertIn("expected_size", self.publisher)
 
+    def test_source_workflow_path_is_bound_through_validation_and_publication(self) -> None:
+        self.assertIn("source-workflow-path:", self.workflow)
+        source_step = self.workflow.split(
+            "      - name: Verify the source workflow run and its immutable commit identity",
+            1,
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}", source_step)
+        self.assertIn('(.path == $workflow)', source_step)
+        publish_step = self.workflow.split(
+            "      - name: Promote the verified rolling release",
+            1,
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}", publish_step)
+        self.assertIn('(.path == $workflow)', self.publisher)
+
     def test_draft_release_retry_resolves_by_id_and_uploads_to_the_release_upload_url(self) -> None:
         self.assertIn('releases?per_page=100', self.publisher)
         self.assertIn('gh api "repos/$REPOSITORY/releases/$RELEASE_ID"', self.publisher)
