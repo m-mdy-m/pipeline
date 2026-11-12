@@ -144,40 +144,58 @@ while IFS= read -r name; do
   assert_safe_asset_name "$name"
 done < "$expected_local"
 
-# A single Release object backs the fixed latest ref. On first publication it
-# remains a draft until every package and the authoritative manifest are verified.
+# Locate a published or draft Release by ID. The tag lookup endpoint does
+# not reliably expose drafts, so listing releases is required for partial retries.
 release_file="$tmp/release.json"
-http_code="$(curl --silent --show-error --output "$release_file" --write-out '%{http_code}' \
-  --header "Authorization: Bearer $GH_TOKEN" \
-  --header 'Accept: application/vnd.github+json' \
-  --header 'X-GitHub-Api-Version: 2022-11-28' \
-  "https://api.github.com/repos/$REPOSITORY/releases/tags/latest")"
-case "$http_code" in
-  200)
-    RELEASE_ID="$(jq -r '.id' "$release_file")"
-    ;;
-  404)
-    initial_body="Rolling product candidate is being staged. This draft is not a published distribution."
-    gh api --method POST "repos/$REPOSITORY/releases" \
-      -f tag_name=latest \
-      -f target_commitish="$SOURCE_SHA" \
-      -f name="$PRODUCT_PREFIX rolling development (staging)" \
-      -f body="$initial_body" \
-      -F draft=true \
-      -F prerelease=true > "$release_file"
-    RELEASE_ID="$(jq -r '.id' "$release_file")"
-    ;;
-  *)
-    echo "Could not inspect the existing latest Release (HTTP $http_code)." >&2
-    cat "$release_file" >&2
+release_ids="$(gh api --paginate "repos/$REPOSITORY/releases?per_page=100" \
+  --jq '.[] | select(.tag_name == "latest") | .id')"
+if [[ -n "$release_ids" ]]; then
+  mapfile -t found_release_ids <<< "$release_ids"
+  if (( ${#found_release_ids[@]} != 1 )); then
+    echo "Expected exactly one Release for tag latest; found ${#found_release_ids[@]}." >&2
     exit 1
-    ;;
-esac
+  fi
+  RELEASE_ID="${found_release_ids[0]}"
+  gh api "repos/$REPOSITORY/releases/$RELEASE_ID" > "$release_file"
+else
+  initial_body="Rolling product candidate is being staged. This draft is not a published distribution."
+  gh api --method POST "repos/$REPOSITORY/releases" \
+    -f tag_name=latest \
+    -f target_commitish="$SOURCE_SHA" \
+    -f name="$PRODUCT_PREFIX rolling development (staging)" \
+    -f body="$initial_body" \
+    -F draft=true \
+    -F prerelease=true > "$release_file"
+  RELEASE_ID="$(jq -r '.id' "$release_file")"
+fi
 if [[ ! "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]; then
   echo "GitHub returned an invalid rolling Release ID." >&2
   exit 1
 fi
 export RELEASE_ID
+
+upload_url_template="$(jq -r '.upload_url // empty' "$release_file")"
+upload_url="${upload_url_template%%\{*}"
+expected_upload_url="https://uploads.github.com/repos/$REPOSITORY/releases/$RELEASE_ID/assets"
+if [[ "$upload_url" != "$expected_upload_url" ]]; then
+  echo "GitHub returned an unexpected Release asset upload URL." >&2
+  exit 1
+fi
+
+upload_release_asset() {
+  local asset_path="$1"
+  local name
+  name="$(basename "$asset_path")"
+  assert_safe_asset_name "$name"
+  curl --fail --silent --show-error \
+    --header "Authorization: Bearer $GH_TOKEN" \
+    --header 'Accept: application/vnd.github+json' \
+    --header 'X-GitHub-Api-Version: 2022-11-28' \
+    --header 'Content-Type: application/octet-stream' \
+    --data-binary "@$asset_path" \
+    "$upload_url?name=$name" > "$tmp/upload-response.json"
+  jq -e --arg name "$name" '.name == $name' "$tmp/upload-response.json" >/dev/null
+}
 
 inventory="$tmp/remote-assets.tsv"
 load_remote_inventory "$inventory"
@@ -192,20 +210,20 @@ while IFS= read -r name; do
   if [[ "$state" == "present" ]]; then
     continue
   fi
-  gh release upload latest "$asset_path" --repo "$REPOSITORY"
+  upload_release_asset "$asset_path"
+  load_remote_inventory "$inventory"
 done < "$expected_local"
 
-# Refresh once after package upload, then add the authoritative manifest last.
-load_remote_inventory "$inventory"
+# Upload the authoritative manifest and its checksum only after package assets.
 for name in "$MANIFEST_NAME" "$MANIFEST_NAME.sha256"; do
   asset_path="$ASSET_DIRECTORY/$name"
   state="$(remote_asset_state "$inventory" "$name" "$asset_path")"
   if [[ "$state" == "present" ]]; then
     continue
   fi
-  gh release upload latest "$asset_path" --repo "$REPOSITORY"
+  upload_release_asset "$asset_path"
+  load_remote_inventory "$inventory"
 done
-load_remote_inventory "$inventory"
 
 # Compare every local package/checksum/manifest byte with GitHub's full,
 # paginated inventory. Python parses TSV rows, avoiding shell IFS and jq injection.
