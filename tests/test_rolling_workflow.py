@@ -29,6 +29,16 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertIn('SOURCE_WORKFLOW_PATH', self.publisher)
         self.assertIn('--arg workflow "$SOURCE_WORKFLOW_PATH"', self.publisher)
 
+    def test_release_token_is_optional_and_falls_back_to_caller_github_token(self) -> None:
+        secret_contract = self.workflow.split("    secrets:", 1)[1].split("\\npermissions:", 1)[0]
+        self.assertIn("required: false", secret_contract)
+        publish_step = self.workflow.split(
+            "      - name: Promote the verified rolling release",
+            1,
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("GH_TOKEN: ${{ secrets.release-token || github.token }}", publish_step)
+        self.assertIn("SOURCE_RUN_TOKEN: ${{ github.token }}", publish_step)
+
     def test_publisher_preserves_inherited_pythonpath(self) -> None:
         self.assertIn('PYTHONPATH=".pipeline/src:src${PYTHONPATH:+:$PYTHONPATH}"', self.publisher)
 
