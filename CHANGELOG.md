@@ -11,6 +11,8 @@
 
 - Add provider-neutral OCI package descriptors and verification, plus a reusable target-matrix GHCR publisher using ORAS with immutable digest receipts and pullback verification.
 
+- Add a reusable rolling `latest` prerelease publisher for six native product distributions. Validate exact upstream CI run identity, component/Registry provenance, archive checksum/size, remote GitHub asset digests and run freshness before promoting the mutable tag; retain immutable SemVer and source-only release paths separately.
+
 ### Fixed
 
 - Preserve the normalized branch context for non-publishing Source Release
