@@ -181,7 +181,7 @@ jq -e --argjson release_id "$RELEASE_ID" '
   (.upload_url | type == "string")
 ' "$release_file" >/dev/null
 upload_url_template="$(jq -r '.upload_url // empty' "$release_file")"
-upload_url="${upload_url_template%%\\{*}"
+upload_url="${upload_url_template%%\{*}"
 expected_upload_url="https://uploads.github.com/repos/$REPOSITORY/releases/$RELEASE_ID/assets"
 if [[ "$upload_url" != "$expected_upload_url" ]]; then
   echo "GitHub returned an unexpected Release asset upload URL." >&2
@@ -194,12 +194,12 @@ upload_release_asset() {
   name="$(basename "$asset_path")"
   assert_safe_asset_name "$name"
   encoded_name="$(python -c 'from urllib.parse import quote; import sys; print(quote(sys.argv[1], safe=""))' "$name")"
-  curl --fail --silent --show-error \\
-    --header "Authorization: Bearer $GH_TOKEN" \\
-    --header 'Accept: application/vnd.github+json' \\
-    --header 'X-GitHub-Api-Version: 2022-11-28' \\
-    --header 'Content-Type: application/octet-stream' \\
-    --data-binary "@$asset_path" \\
+  curl --fail --silent --show-error \
+    --header "Authorization: Bearer $GH_TOKEN" \
+    --header 'Accept: application/vnd.github+json' \
+    --header 'X-GitHub-Api-Version: 2022-11-28' \
+    --header 'Content-Type: application/octet-stream' \
+    --data-binary "@$asset_path" \
     "$upload_url?name=$encoded_name" > "$tmp/upload-response.json"
   jq -e --arg name "$name" '.name == $name' "$tmp/upload-response.json" >/dev/null
 }
