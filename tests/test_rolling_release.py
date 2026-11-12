@@ -116,10 +116,10 @@ class RollingReleasePreparationTests(unittest.TestCase):
             path = self.output / asset["name"]
             asset["size_bytes"] = path.stat().st_size
             asset["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         (self.output / (result["manifest_name"] + ".sha256")).write_text(
-            f"{digest}  {result['manifest_name']}\\n", encoding="ascii"
+            f"{digest}  {result['manifest_name']}\n", encoding="ascii"
         )
 
     def test_prepares_exact_matrix_and_commit_qualified_assets(self) -> None:
@@ -216,7 +216,7 @@ class RollingReleasePreparationTests(unittest.TestCase):
         result = self.prepare()
         package = result["packages"][0]
         sidecar = self.output / package["checksum"]
-        sidecar.write_text(f"{'0' * 64}  {package['archive']['name']}\\n", encoding="ascii")
+        sidecar.write_text(f"{'0' * 64}  {package['archive']['name']}\n", encoding="ascii")
         self.refresh_rolling_manifest(result)
         with self.assertRaisesRegex(RollingReleaseError, "checksum sidecar is inconsistent"):
             verify_rolling_assets(
