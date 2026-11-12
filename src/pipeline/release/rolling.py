@@ -324,13 +324,29 @@ def latest_action(
     current_latest: str | None,
     candidate: str,
     main_head: str,
+    candidate_run_id: str,
+    candidate_run_attempt: str,
+    latest_successful_run_id: str,
+    latest_successful_run_attempt: str,
     is_ancestor: Callable[[str, str], bool],
 ) -> str:
-    """Return publish, already-current, or stale without permitting rollback."""
+    """Decide whether a successful CI run may advance the rolling channel.
+
+    A completed older run may not publish after a newer successful main-branch
+    CI run, even when its commit is still an ancestor of main.
+    """
     if not FULL_SHA.fullmatch(candidate) or not FULL_SHA.fullmatch(main_head):
         raise RollingReleaseError("candidate and main head must be full commit SHAs")
     if not is_ancestor(candidate, main_head):
         raise RollingReleaseError("candidate commit is not an ancestor of current main")
+    if not RUN_ID.fullmatch(candidate_run_id) or not RUN_ID.fullmatch(latest_successful_run_id):
+        raise RollingReleaseError("workflow run IDs must be decimal integers")
+    if not RUN_ID.fullmatch(candidate_run_attempt) or not RUN_ID.fullmatch(latest_successful_run_attempt):
+        raise RollingReleaseError("workflow run attempts must be decimal integers")
+    if (candidate_run_id, candidate_run_attempt) != (
+        latest_successful_run_id, latest_successful_run_attempt
+    ):
+        return "stale"
     if current_latest is None:
         return "publish"
     if not FULL_SHA.fullmatch(current_latest):
