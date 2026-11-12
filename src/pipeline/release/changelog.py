@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 from typing import Sequence
-from .errors import ReleaseError
+from .errors import EmptyUnreleasedError, ReleaseError
 from .git_snapshot import read_blob
 from .models import TreeEntry
 from .paths import safe_repo_path
@@ -84,7 +84,7 @@ def extract_unreleased_section(changelog: str, path: str) -> str:
     section = "\n".join(lines[start:end]).strip()
     body_lines = [line for line in lines[start + 1:end] if line.strip()]
     if not any(not re.match(r"^\s{0,3}#{1,6}\s+", line) for line in body_lines):
-        raise ReleaseError(f"The Unreleased section in '{path}' is empty")
+        raise EmptyUnreleasedError(f"The Unreleased section in '{path}' is empty")
     return section + "\n"
 
 
@@ -139,9 +139,7 @@ def extract_dry_run_section(changelog: str, path: str) -> str:
     if unreleased_count:
         try:
             return extract_unreleased_section(changelog, path)
-        except ReleaseError as exc:
-            if str(exc) != f"The Unreleased section in '{path}' is empty":
-                raise
+        except EmptyUnreleasedError as exc:
             empty_unreleased_error = exc
 
     for line in changelog.splitlines():
