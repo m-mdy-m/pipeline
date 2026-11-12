@@ -159,7 +159,7 @@ def prepare_rolling_assets(
         target = package_manifest.get("target")
         target_id = _target_id(target)
         profile = package_manifest.get("profile")
-        if profile not in {"tui", "gui-sdl"}:
+        if profile not in PRODUCT_PROFILES:
             raise RollingReleaseError(f"unsupported package profile in {directory.name}: {profile!r}")
         pair = (target_id, profile)
         if pair not in expected:
