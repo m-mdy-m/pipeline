@@ -9,6 +9,7 @@ set -euo pipefail
 : "${SOURCE_BRANCH:?SOURCE_BRANCH is required}"
 : "${SOURCE_SHA:?SOURCE_SHA is required}"
 : "${SOURCE_RUN_ID:?SOURCE_RUN_ID is required}"
+: "${SOURCE_WORKFLOW_PATH:?SOURCE_WORKFLOW_PATH is required}"
 : "${PRODUCT_PREFIX:?PRODUCT_PREFIX is required}"
 : "${ASSET_DIRECTORY:?ASSET_DIRECTORY is required}"
 : "${MANIFEST_NAME:?MANIFEST_NAME is required}"
@@ -52,8 +53,10 @@ verify_source_run() {
     --arg repository "$REPOSITORY" \
     --arg sha "$SOURCE_SHA" \
     --arg branch "$SOURCE_BRANCH" \
+    --arg workflow "$SOURCE_WORKFLOW_PATH" \
     '(.event == "push") and
      (.conclusion == "success") and
+     (.path == $workflow) and
      (.head_branch == $branch) and
      (.head_sha == $sha) and
      (.repository.full_name == $repository) and
@@ -120,7 +123,7 @@ verify_source_run
 assert_fresh_main
 
 # Re-validate the complete local manifest immediately before touching GitHub.
-PYTHONPATH=.pipeline/src python -m pipeline.release.rolling verify \
+PYTHONPATH=".pipeline/src:src${PYTHONPATH:+:$PYTHONPATH}" python -m pipeline.release.rolling verify \
   --output-directory "$ASSET_DIRECTORY" \
   --manifest-name "$MANIFEST_NAME" \
   --source-sha "$SOURCE_SHA" \
