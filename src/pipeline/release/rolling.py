@@ -12,7 +12,6 @@ import os
 import re
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -84,6 +83,7 @@ def _validate_group(
     profile: str,
     source_commit: str,
     source_run_id: str,
+    source_run_attempt: str,
 ) -> dict[str, Any]:
     files = _regular_files(group_path)
     archives = [path for path in files if path.name.endswith((".tar.gz", ".zip"))]
@@ -108,8 +108,12 @@ def _validate_group(
     if manifest.get("profile") != profile:
         raise RollingReleaseError(f"profile mismatch in {manifest_path.name}")
     workflow = manifest.get("workflow")
-    if not isinstance(workflow, dict) or str(workflow.get("run_id", "")) != source_run_id:
-        raise RollingReleaseError(f"source workflow run ID mismatch in {manifest_path.name}")
+    if (
+        not isinstance(workflow, dict)
+        or str(workflow.get("run_id", "")) != source_run_id
+        or str(workflow.get("run_attempt", "")) != source_run_attempt
+    ):
+        raise RollingReleaseError(f"source workflow run identity mismatch in {manifest_path.name}")
     target = manifest.get("target")
     if not isinstance(target, dict) or target.get("os") != OS_NAMES[runner_os]:
         raise RollingReleaseError(f"target OS mismatch in {manifest_path.name}")
@@ -214,6 +218,7 @@ def prepare_rolling_assets(
             profile=profile,
             source_commit=source_commit,
             source_run_id=source_run_id,
+            source_run_attempt=source_run_attempt,
         )
         target = record["target"]
         slug = f"{target['os']}-{target['architecture']}-{profile}"
@@ -342,11 +347,12 @@ def latest_action(
 def _load_remote_assets(path: Path) -> list[dict[str, Any]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, list):
-        return payload
+        if all(isinstance(page, list) for page in payload):
+            return [item for page in payload for item in page]
+        if all(isinstance(item, dict) for item in payload):
+            return payload
     if isinstance(payload, dict) and isinstance(payload.get("assets"), list):
         return payload["assets"]
-    if isinstance(payload, list) and all(isinstance(page, list) for page in payload):
-        return [item for page in payload for item in page]
     raise RollingReleaseError("remote asset JSON must be an array or a paginated array")
 
 
