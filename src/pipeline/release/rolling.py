@@ -5,9 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
-import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -284,15 +282,8 @@ def prepare_rolling_assets(
     manifest_digest = sha256_file(manifest_path)
     sidecar_path = output / (manifest_name + ".sha256")
     sidecar_path.write_text(f"{manifest_digest}  {manifest_name}\n", encoding="ascii")
-    manifest["manifest_asset"] = {
-        "name": manifest_name,
-        "size_bytes": manifest_path.stat().st_size,
-        "sha256": manifest_digest,
-        "checksum": sidecar_path.name,
-    }
-    # Rewriting the manifest after adding its own identity would be recursive;
-    # the sidecar and manifest_asset are therefore emitted in a small envelope.
-    # Keep the asset's own digest in the workflow output/Release body, not inside itself.
+    # The manifest cannot contain its own digest without a recursive identity.
+    # The immutable checksum sidecar and workflow output carry that identity.
     return {
         "manifest": str(manifest_path),
         "manifest_name": manifest_name,
