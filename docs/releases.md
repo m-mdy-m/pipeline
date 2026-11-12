@@ -189,7 +189,7 @@ PYTHONPATH=.pipeline/src python -m pipeline.release.target_cli run \
 
 Use `.github/workflows/rolling-release.yml` when a project needs one mutable development channel for the newest fully verified `main` build. This is deliberately separate from both the immutable SemVer build-release workflow and the source-only contributor workflow.
 
-The reusable workflow accepts the ID and SHA of an already successful `push` workflow run, downloads that run's artifacts, verifies that every required target/profile pair was built from the exact commit, and prepares a commit-qualified asset set. It then:
+The reusable workflow accepts the ID, SHA and exact workflow-file path of an already successful `push` workflow run, downloads that run's artifacts, verifies that every required target/profile pair was built from the exact commit, and prepares a commit-qualified asset set. It rejects another successful run on the same SHA if it did not come from the configured artifact-producing workflow. It then:
 
 1. Serializes publication per repository with a non-cancelling concurrency group.
 2. Confirms the source workflow run is successful, belongs to the caller repository, is a push to `main`, and identifies the supplied 40-character SHA.
@@ -231,6 +231,7 @@ jobs:
       pipeline-ref: <same-pipeline-commit>
       repository: ${{ github.repository }}
       source-run-id: ${{ github.event.workflow_run.id }}
+      source-workflow-path: .github/workflows/product-acceptance.yml
       source-branch: ${{ github.event.workflow_run.head_branch }}
       source-sha: ${{ github.event.workflow_run.head_sha }}
       artifact-pattern: "cdin-installed-product-*"
