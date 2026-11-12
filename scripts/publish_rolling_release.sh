@@ -136,7 +136,7 @@ while IFS= read -r asset; do
     --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv")
   if [[ -n "$found" ]]; then
     IFS=$'\t' read -r asset_id remote_size remote_digest <<< "$found"
-    if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
+    if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
       echo "Immutable rolling asset collision for $name; refusing to replace it." >&2
       exit 1
     fi
@@ -156,7 +156,7 @@ for asset in "$manifest_path" "$manifest_path.sha256"; do
     --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv")
   if [[ -n "$found" ]]; then
     IFS=$'\t' read -r asset_id remote_size remote_digest <<< "$found"
-    if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
+    if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
       echo "Immutable rolling manifest collision for $name; refusing to replace it." >&2
       exit 1
     fi
@@ -173,6 +173,7 @@ gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
 while IFS= read -r asset; do
   [[ -n "$asset" ]] || continue
   name="$asset"
+  assert_safe_asset_name "$name"
   asset_path="$ASSET_DIRECTORY/$asset"
   expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
   expected_size="$(stat -c '%s' "$asset_path")"
@@ -258,6 +259,7 @@ current_names="$tmp/current-assets.txt"
 printf '%s\n' "$expected_local" > "$current_names"
 while IFS=$'\t' read -r name size digest; do
   [[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]] || continue
+  assert_safe_asset_name "$name"
   assert_safe_asset_name "$name"
   if ! grep -Fxq "$name" "$current_names"; then
     asset_id="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
