@@ -113,7 +113,7 @@ jobs:
 
 The referenced file must declare `on: workflow_call`, and the call must appear at the job level. `@main` is convenient while evaluating changes. For production projects, pin a reviewed release tag or full commit SHA so the workflow does not change unexpectedly.
 
-Set `toolchain-preset: true` to use the engine's language preset instead of passing commands. Reusable workflows are also available for documentation checks, benchmarks, compiled releases, source releases, Docker, npm, Python packages, security scans, and GitHub Pages. Publishing/deployment workflows expose `dry-run` inputs where a non-publishing test is useful. See [Providers and reusable workflows](docs/providers.md) and [Releases](docs/releases.md).
+Set `toolchain-preset: true` to use the engine's language preset instead of passing commands. Reusable workflows are also available for documentation checks, benchmarks, compiled releases, source releases, Docker, npm, Python packages, security scans, and GitHub Pages. Publishing/deployment workflows expose `dry-run` inputs where a non-publishing test is useful. The reusable `rolling-release.yml` provides a verified, mutable `latest` prerelease channel for product artifacts, separate from immutable SemVer and source-only releases. See [Providers and reusable workflows](docs/providers.md) and [Releases](docs/releases.md).
 
 ## Documentation
 
