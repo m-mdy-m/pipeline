@@ -42,7 +42,7 @@ class RollingReleaseWorkflowContractTests(unittest.TestCase):
         self.assertLess(verify_remote, promote)
         self.assertIn("pipeline.release.rolling prepare", workflow)
         self.assertIn("pipeline.release.rolling verify-remote", workflow)
-        self.assertIn('prerelease: True', workflow)
+        self.assertIn('"prerelease": True', workflow)
         self.assertIn('"tag_name": "latest"', workflow)
         self.assertIn('"draft": False', workflow)
         self.assertIn('"make_latest": "false"', workflow)
