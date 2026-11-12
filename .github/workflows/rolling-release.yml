@@ -1,0 +1,179 @@
+name: Rolling product prerelease
+
+on:
+  workflow_call:
+    inputs:
+      pipeline-ref:
+        description: "Exact Pipeline commit that implements rolling asset verification and publication"
+        required: true
+        type: string
+      repository:
+        description: "Caller repository in owner/name form"
+        required: true
+        type: string
+      source-run-id:
+        description: "Successful caller workflow run whose artifacts are being promoted"
+        required: true
+        type: string
+      source-branch:
+        description: "Source branch; the product rolling channel only accepts main"
+        required: true
+        type: string
+      source-sha:
+        description: "Exact 40-character commit SHA from the successful source run"
+        required: true
+        type: string
+      artifact-pattern:
+        description: "Pattern for target/profile installed-product workflow artifacts"
+        required: false
+        type: string
+        default: "cdin-installed-product-*"
+      product-prefix:
+        description: "Safe product filename namespace, for example cdin"
+        required: true
+        type: string
+      expected-target-profiles:
+        description: "JSON array of required {target, profile} pairs"
+        required: true
+        type: string
+    secrets:
+      release-token:
+        description: "Token permitted to create/update the fixed tag and rolling GitHub Release"
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rolling-product-${{ inputs.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify and promote the complete rolling product set
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out the exact shared Pipeline helper
+        uses: actions/checkout@v7
+        with:
+          repository: m-mdy-m/pipeline
+          ref: ${{ inputs.pipeline-ref }}
+          path: .pipeline
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: ./.pipeline/.github/actions/python-setup
+        with:
+          python-version: "3.12"
+
+      - name: Verify the source workflow run and its immutable commit identity
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.release-token }}
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_BRANCH: ${{ inputs.source-branch }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_BRANCH" == "main" ]]
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+          jq -e \
+            --arg repository "$REPOSITORY" \
+            --arg sha "$SOURCE_SHA" \
+            --arg branch "$SOURCE_BRANCH" \
+            '(.event == "push") and
+             (.conclusion == "success") and
+             (.head_branch == $branch) and
+             (.head_sha == $sha) and
+             (.repository.full_name == $repository)' \
+            "$RUNNER_TEMP/source-run.json" >/dev/null
+          attempt="$(jq -r '.run_attempt' "$RUNNER_TEMP/source-run.json")"
+          [[ "$attempt" =~ ^[0-9]+$ ]]
+          printf 'run_attempt=%s\n' "$attempt" >> "$GITHUB_OUTPUT"
+          current_main="$(gh api "repos/$REPOSITORY/commits/main" --jq .sha)"
+          if [[ "$current_main" != "$SOURCE_SHA" ]]; then
+            echo "The source run is no longer the newest main commit; refusing stale promotion." >&2
+            exit 1
+          fi
+          echo "Verified successful main run $SOURCE_RUN_ID for $SOURCE_SHA (attempt $attempt)."
+
+      - name: Download target/profile artifacts from the verified source run
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ inputs.artifact-pattern }}
+          path: rolling-inputs
+          merge-multiple: false
+          repository: ${{ inputs.repository }}
+          run-id: ${{ inputs.source-run-id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify and prepare commit-qualified rolling assets
+        id: prepare
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          PRODUCT_PREFIX: ${{ inputs.product-prefix }}
+          EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pipeline.release.rolling prepare \
+            --artifact-root rolling-inputs \
+            --output-directory rolling-assets \
+            --repository "$REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --product-prefix "$PRODUCT_PREFIX" \
+            --expected-target-profiles "$EXPECTED_TARGET_PROFILES" \
+            | tee "$RUNNER_TEMP/rolling-prepare.json"
+          manifest_name="$(jq -r '.manifest_name' "$RUNNER_TEMP/rolling-prepare.json")"
+          [[ -n "$manifest_name" && "$manifest_name" != "null" ]]
+          printf 'manifest_name=%s\n' "$manifest_name" >> "$GITHUB_OUTPUT"
+
+      - name: Independently verify the complete candidate inventory
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+          MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
+        run: |
+          set -euo pipefail
+          python -m pipeline.release.rolling verify \
+            --output-directory rolling-assets \
+            --manifest-name "$MANIFEST_NAME" \
+            --source-sha "$SOURCE_SHA" \
+            --repository "$REPOSITORY" \
+            --expected-target-profiles "$EXPECTED_TARGET_PROFILES"
+
+      - name: Promote the verified rolling release with freshness and repair guards
+        env:
+          GH_TOKEN: ${{ secrets.release-token }}
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_BRANCH: ${{ inputs.source-branch }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          PRODUCT_PREFIX: ${{ inputs.product-prefix }}
+          ASSET_DIRECTORY: rolling-assets
+          MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
+        run: bash .pipeline/scripts/publish_rolling_release.sh
+
+      - name: Retain the exact promotion inventory for audit
+        uses: actions/upload-artifact@v7
+        with:
+          name: rolling-release-inventory-${{ inputs.source-sha }}
+          path: rolling-assets/
+          if-no-files-found: error
+          retention-days: 90
