@@ -201,14 +201,14 @@ The reusable workflow accepts the ID and SHA of an already successful `push` wor
 
 The manifest is the authoritative inventory. Consumers must use only the assets it lists, not every file that may temporarily be visible while a candidate is being staged. The asset filenames include the full source commit SHA so a retry is idempotent and a different commit never overwrites those bytes. If a newer commit reaches `main` while an older run is waiting or uploading, the older run stops before moving the tag. If publication is interrupted, rerunning the same source run verifies and reuses matching assets rather than replacing them.
 
-A caller should trigger the reusable workflow only after its complete CI/native matrix has succeeded. For example, this is the shape of a product-owned `workflow_run` orchestrator (the target list and artifact pattern belong to the caller):
+A caller should trigger the reusable workflow only after its complete CI/native matrix **and product acceptance gates** have succeeded. Do not invoke the rolling product channel from a build-only or non-interactive smoke workflow. For example, this is the shape of a product-owned `workflow_run` orchestrator (the target list and artifact pattern belong to the caller):
 
 ~~~yaml
 name: Rolling product prerelease
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Product Acceptance"]
     types: [completed]
     branches: [main]
 
