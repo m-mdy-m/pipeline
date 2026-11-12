@@ -58,15 +58,18 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
 
     def test_publisher_never_overwrites_immutable_same_sha_assets(self) -> None:
         self.assertNotIn("--clobber", self.publisher)
-        self.assertIn("Immutable rolling asset collision", self.publisher)
+        self.assertNotIn("head -n 1", self.publisher)
+        self.assertNotIn("awk -F", self.publisher)
+        self.assertIn("pipeline.release.rolling verify", self.publisher)
+        self.assertIn("immutable rolling asset collision", self.publisher)
         self.assertIn("sha256:$expected_sha", self.publisher)
         self.assertIn("expected_size", self.publisher)
 
     def test_manifest_is_uploaded_after_packages_and_before_promotion(self) -> None:
-        package_upload = self.publisher.index("# Upload all commit-qualified assets")
-        manifest_upload = self.publisher.index("# The manifest and its sidecar")
-        remote_verify = self.publisher.index("# Re-read the Release inventory")
-        promote = self.publisher.index("# Recheck immediately before moving the mutable ref")
+        package_upload = self.publisher.index("# Upload commit-qualified package assets")
+        manifest_upload = self.publisher.index("# Upload the authoritative manifest last")
+        remote_verify = self.publisher.index("# Compare every local package/checksum/manifest byte")
+        promote = self.publisher.index("# Recheck source identity immediately before moving the mutable tag")
         self.assertLess(package_upload, manifest_upload)
         self.assertLess(manifest_upload, remote_verify)
         self.assertLess(remote_verify, promote)
@@ -74,7 +77,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
     def test_prerelease_is_verified_before_obsolete_assets_are_pruned(self) -> None:
         update_release = self.publisher.index('gh api --method PATCH "repos/$REPOSITORY/releases/$release_id"')
         verify_flags = self.publisher.index("(.draft == false) and (.prerelease == true)", update_release)
-        prune = self.publisher.index("# Do not prune if main advanced")
+        prune = self.publisher.index("# Prune old assets only after the new inventory")
         self.assertLess(update_release, verify_flags)
         self.assertLess(verify_flags, prune)
         self.assertIn('[[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]]', self.publisher)
