@@ -3,6 +3,7 @@
 set -euo pipefail
 
 : "${GH_TOKEN:?GH_TOKEN is required}"
+: "${SOURCE_RUN_TOKEN:?SOURCE_RUN_TOKEN is required}"
 : "${REPOSITORY:?REPOSITORY is required}"
 : "${SOURCE_BRANCH:?SOURCE_BRANCH is required}"
 : "${SOURCE_SHA:?SOURCE_SHA is required}"
@@ -44,7 +45,7 @@ assert_fresh_main() {
 
 verify_source_run() {
   local run_file="$tmp/source-run.json"
-  api_json "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$run_file"
+  GH_TOKEN="$SOURCE_RUN_TOKEN" gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$run_file"
   jq -e     --arg repository "$REPOSITORY"     --arg sha "$SOURCE_SHA"     --arg branch "$SOURCE_BRANCH"     '(.event == "push") and
      (.conclusion == "success") and
      (.head_branch == $branch) and
@@ -58,7 +59,6 @@ assert_fresh_main
 
 manifest_path="$ASSET_DIRECTORY/$MANIFEST_NAME"
 manifest_sha="$(sha256sum "$manifest_path" | awk '{print $1}')"
-manifest_size="$(stat -c '%s' "$manifest_path")"
 [[ -s "$manifest_path" ]]
 [[ -s "$manifest_path.sha256" ]]
 grep -Fxq "$manifest_sha  $MANIFEST_NAME" "$manifest_path.sha256"
@@ -109,10 +109,11 @@ fi
 # different bytes under one immutable source-SHA name are never overwritten.
 while IFS= read -r asset; do
   [[ -n "$asset" ]] || continue
-  name="$(basename "$asset")"
+  name="$asset"
+  asset_path="$ASSET_DIRECTORY/$asset"
   [[ "$name" == "$MANIFEST_NAME" || "$name" == "$MANIFEST_NAME.sha256" ]] && continue
-  expected_sha="$(sha256sum "$asset" | awk '{print $1}')"
-  expected_size="$(stat -c '%s' "$asset")"
+  expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
+  expected_size="$(stat -c '%s' "$asset_path")"
   found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
     --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv" | head -n 1 || true)"
   if [[ -n "$found" ]]; then
@@ -123,14 +124,15 @@ while IFS= read -r asset; do
     fi
     continue
   fi
-  gh release upload latest "$asset" --repo "$REPOSITORY"
+  gh release upload latest "$asset_path" --repo "$REPOSITORY"
 done <<< "$expected_local"
 
 # The manifest and its sidecar are uploaded only after all package assets.
 for asset in "$manifest_path" "$manifest_path.sha256"; do
-  name="$(basename "$asset")"
-  expected_sha="$(sha256sum "$asset" | awk '{print $1}')"
-  expected_size="$(stat -c '%s' "$asset")"
+  name="$asset"
+  asset_path="$ASSET_DIRECTORY/$asset"
+  expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
+  expected_size="$(stat -c '%s' "$asset_path")"
   found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
     --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv" | head -n 1 || true)"
   if [[ -n "$found" ]]; then
@@ -195,7 +197,7 @@ case "$ref_code" in
     ;;
 esac
 
-resolved_ref="$(gh api "repos/$REPOSITORY/commits/latest" --jq .sha)"
+resolved_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest" --jq '.object.sha')"
 if [[ "$resolved_ref" != "$SOURCE_SHA" ]]; then
   echo "latest tag did not resolve to the verified source commit." >&2
   exit 1
