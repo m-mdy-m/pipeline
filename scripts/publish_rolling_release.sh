@@ -182,7 +182,7 @@ while IFS= read -r asset; do
     echo "GitHub Release is missing candidate asset $name." >&2
     exit 1
   fi
-  IFS= read -r remote_name remote_size remote_digest <<< "$row"
+  IFS= <<< "$row"\t' read -r remote_name remote_size remote_digest <<< "$row"
   if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
     echo "GitHub Release has a digest/size mismatch for $name." >&2
     exit 1
@@ -273,12 +273,6 @@ done < "$inventory"
 echo "Published verified rolling prerelease: $REPOSITORY/releases/tag/latest"
 echo "Source commit: $SOURCE_SHA"
 echo "Manifest: $MANIFEST_NAME ($manifest_sha)"
-\t' read -r remote_name remote_size remote_digest <<< "$row"
-  if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
-    echo "GitHub Release has a digest/size mismatch for $name." >&2
-    exit 1
-  fi
-done <<< "$expected_local"
 
 # Recheck immediately before moving the mutable ref. A newer main push makes
 # this run stale; uploaded assets remain unreferenced and are safe to retry/prune.
