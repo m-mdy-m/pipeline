@@ -182,8 +182,8 @@ jobs:
             --main-head "$MAIN_HEAD" \
             --candidate-run-id "$SOURCE_RUN_ID" \
             --candidate-run-attempt "$SOURCE_RUN_ATTEMPT" \
-            --latest-successful-run-id "\${{ steps.source.outputs.latest_successful_run_id }}" \
-            --latest-successful-run-attempt "\${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
+            --latest-successful-run-id "${{ steps.source.outputs.latest_successful_run_id }}" \
+            --latest-successful-run-attempt "${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
           if [[ "$decision" == "stale" ]]; then
             echo "The successful CI run is stale relative to the latest published build; nothing will be changed."
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -267,16 +267,16 @@ jobs:
             "repos/$REPOSITORY/releases/${{ steps.release.outputs.release_id }}/assets?per_page=100" \
             > "$RUNNER_TEMP/remote-assets.json"
           python -m pipeline.release.rolling verify-remote \
-            --inventory rolling-assets/rolling-inventory.json \
+            --inventory rolling-inventory.json \
             --remote-assets "$RUNNER_TEMP/remote-assets.json"
 
       - name: Recheck freshness, move latest and publish the verified release
         if: steps.freshness.outputs.publish == 'true'
         shell: bash
         env:
-          RELEASE_ID: \${{ steps.release.outputs.release_id }}
-          RELEASE_CREATED: \${{ steps.release.outputs.created }}
-          OLD_LATEST_SHA: \${{ steps.freshness.outputs.old_latest_sha }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          RELEASE_CREATED: ${{ steps.release.outputs.created }}
+          OLD_LATEST_SHA: ${{ steps.freshness.outputs.old_latest_sha }}
         run: |
           set -euo pipefail
           # A newer successful main CI run may finish while the candidate uploads.
@@ -330,8 +330,8 @@ jobs:
             --main-head "$MAIN_HEAD" \
             --candidate-run-id "$SOURCE_RUN_ID" \
             --candidate-run-attempt "$SOURCE_RUN_ATTEMPT" \
-            --latest-successful-run-id "\${{ steps.source.outputs.latest_successful_run_id }}" \
-            --latest-successful-run-attempt "\${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
+            --latest-successful-run-id "${{ steps.source.outputs.latest_successful_run_id }}" \
+            --latest-successful-run-attempt "${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
           if [[ "$decision" == "stale" ]]; then
             echo "A newer latest tag won the race; leaving its release untouched."
             exit 0
