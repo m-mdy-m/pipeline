@@ -143,17 +143,19 @@ jobs:
           )
           identity = (source["id"], source["run_attempt"])
           newest_identity = (newest["id"], newest["run_attempt"])
-          if identity != newest_identity:
-              raise SystemExit(
-                  f"stale rolling-release event: source run {identity} is not the newest "
-                  f"successful main CI run {newest_identity}"
-              )
+          publish = identity == newest_identity
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              output.write(f"workflow_id={source['workflow_id']}\n")
-          print(
-              f"Verified newest successful main CI run #{source['run_number']} "
-              f"attempt {source['run_attempt']} at {source['head_sha']}."
-          )
+              output.write(f"publish={str(publish).lower()}\\n")
+              output.write(f"workflow_id={source['workflow_id']}\\n")
+              output.write(f"latest_successful_run_id={newest['id']}\\n")
+              output.write(f"latest_successful_run_attempt={newest['run_attempt']}\\n")
+          if not publish:
+              print(f"Skipping stale run {identity}; newest successful main CI is {newest_identity}.")
+          else:
+              print(
+                  f"Verified newest successful main CI run #{source['run_number']} "
+                  f"attempt {source['run_attempt']} at {source['head_sha']}."
+              )
           PY
 
       - name: Check source ancestry and current latest pointer
