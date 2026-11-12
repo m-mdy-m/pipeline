@@ -316,7 +316,15 @@ def verify_rolling_assets(
     """Recheck the complete local publication bundle immediately before upload."""
     if not FULL_SHA.fullmatch(source_sha):
         raise RollingReleaseError("source SHA must be a full lowercase 40-character commit SHA")
+    if (
+        not isinstance(manifest_name, str)
+        or Path(manifest_name).name != manifest_name
+        or manifest_name in {"", ".", ".."}
+    ):
+        raise RollingReleaseError("rolling release manifest filename is unsafe")
     root = Path(output_directory)
+    if root.is_symlink() or not root.is_dir():
+        raise RollingReleaseError("rolling release output directory is missing or unsafe")
     manifest_path = root / manifest_name
     manifest = _json_object(manifest_path, "rolling release manifest")
     if (
@@ -326,53 +334,122 @@ def verify_rolling_assets(
         or manifest.get("repository") != repository
     ):
         raise RollingReleaseError("rolling release manifest identity does not match this promotion")
+
     expected = _expected_pairs(expected_target_profiles)
-    actual = {
+    target_profiles = manifest.get("target_profiles")
+    if (
+        not isinstance(target_profiles, list)
+        or any(not isinstance(item, dict) for item in target_profiles)
+    ):
+        raise RollingReleaseError("rolling release target/profile declarations are malformed")
+    declared_pairs = [
         (item.get("target"), item.get("profile"))
-        for item in manifest.get("target_profiles", [])
-        if isinstance(item, dict)
-    }
-    if actual != expected:
-        raise RollingReleaseError("rolling release manifest target/profile inventory is incomplete or unexpected")
+        for item in target_profiles
+    ]
+    if len(declared_pairs) != len(expected) or set(declared_pairs) != expected:
+        raise RollingReleaseError("rolling release manifest target/profile inventory is incomplete, duplicated or unexpected")
+
+    packages = manifest.get("packages")
+    if not isinstance(packages, list) or any(not isinstance(item, dict) for item in packages):
+        raise RollingReleaseError("rolling release package inventory is malformed")
+    package_pairs = [
+        (item.get("target"), item.get("profile"))
+        for item in packages
+    ]
+    if len(package_pairs) != len(expected) or set(package_pairs) != expected:
+        raise RollingReleaseError("rolling release package inventory is incomplete, duplicated or unexpected")
+
     records = manifest.get("assets")
     if not isinstance(records, list) or not records:
         raise RollingReleaseError("rolling release manifest has no asset inventory")
     seen: set[str] = set()
+    kinds_by_pair: dict[tuple[str, str], set[str]] = {}
+    records_by_name: dict[str, dict[str, Any]] = {}
     for record in records:
         if not isinstance(record, dict):
             raise RollingReleaseError("rolling release manifest contains an invalid asset record")
         name = record.get("name")
         digest = record.get("sha256")
         size = record.get("size_bytes")
+        target = record.get("target")
+        profile = record.get("profile")
+        kind = record.get("kind")
+        pair = (target, profile)
         if (
             not isinstance(name, str)
             or Path(name).name != name
-            or name in {".", ".."}
+            or name in {"", ".", ".."}
             or not isinstance(digest, str)
             or not HEX_SHA256.fullmatch(digest)
             or not isinstance(size, int)
             or isinstance(size, bool)
             or size <= 0
             or name in seen
+            or pair not in expected
+            or kind not in {"application-archive", "sha256-checksum", "package-manifest"}
         ):
             raise RollingReleaseError("rolling release manifest contains an unsafe or duplicate asset")
         seen.add(name)
+        kinds = kinds_by_pair.setdefault(pair, set())
+        if kind in kinds:
+            raise RollingReleaseError(f"duplicate asset kind for {target}/{profile}: {kind}")
+        kinds.add(kind)
+        records_by_name[name] = record
         path = root / name
         if path.is_symlink() or not path.is_file():
             raise RollingReleaseError(f"rolling release asset is missing or unsafe: {name}")
         if path.stat().st_size != size or sha256_file(path) != digest:
             raise RollingReleaseError(f"rolling release asset digest/size mismatch: {name}")
+
+    required_kinds = {
+        "application-archive",
+        "sha256-checksum",
+        "package-manifest",
+    }
+    for pair in expected:
+        if kinds_by_pair.get(pair) != required_kinds:
+            raise RollingReleaseError(
+                f"rolling release asset kinds are incomplete for {pair[0]}/{pair[1]}"
+            )
+
+    for package in packages:
+        target, profile = package["target"], package["profile"]
+        archive = package.get("archive")
+        if not isinstance(archive, dict):
+            raise RollingReleaseError(f"package inventory is missing archive identity for {target}/{profile}")
+        archive_record = records_by_name.get(archive.get("name"))
+        checksum_record = records_by_name.get(package.get("checksum"))
+        manifest_record = records_by_name.get(package.get("package_manifest"))
+        if (
+            archive_record is None
+            or checksum_record is None
+            or manifest_record is None
+            or archive_record.get("kind") != "application-archive"
+            or checksum_record.get("kind") != "sha256-checksum"
+            or manifest_record.get("kind") != "package-manifest"
+            or any(
+                (row.get("target"), row.get("profile")) != (target, profile)
+                for row in (archive_record, checksum_record, manifest_record)
+            )
+            or archive_record.get("sha256") != archive.get("sha256")
+            or archive_record.get("size_bytes") != archive.get("size_bytes")
+        ):
+            raise RollingReleaseError(
+                f"package/asset inventory references do not agree for {target}/{profile}"
+            )
+
     checksum_path = root / (manifest_name + ".sha256")
     expected_manifest_digest = sha256_file(manifest_path)
     if checksum_path.is_symlink() or not checksum_path.is_file():
         raise RollingReleaseError("rolling release manifest checksum is missing or unsafe")
     if checksum_path.read_text(encoding="ascii").strip() != f"{expected_manifest_digest}  {manifest_name}":
         raise RollingReleaseError("rolling release manifest checksum does not match its bytes")
+
     expected_files = seen | {manifest_name, manifest_name + ".sha256"}
-    actual_files = {
-        path.name for path in root.iterdir()
-        if path.is_file() and not path.is_symlink()
-    }
+    entries = list(root.iterdir())
+    if any(path.is_symlink() or not path.is_file() for path in entries):
+        raise RollingReleaseError("rolling output contains a symlink, directory or special file")
+    actual_files = {path.name for path in entries}
     if actual_files != expected_files:
         raise RollingReleaseError(
             f"rolling output contains untracked or missing files: expected={sorted(expected_files)}, actual={sorted(actual_files)}"
