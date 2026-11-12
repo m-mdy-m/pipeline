@@ -63,7 +63,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertIn("pipeline.release.rolling verify", self.publisher)
         self.assertIn('line.split("\\t")', self.publisher)
         self.assertIn("immutable rolling asset collision", self.publisher)
-        self.assertIn("sha256:$expected_sha", self.publisher)
+        self.assertIn('remote_digest != f"sha256:{expected_digest}"', self.publisher)
         self.assertIn("expected_size", self.publisher)
 
     def test_remote_asset_names_are_parsed_without_shell_or_jq_interpolation(self) -> None:
