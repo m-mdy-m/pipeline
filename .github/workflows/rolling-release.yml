@@ -126,6 +126,7 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
           PRODUCT_PREFIX: ${{ inputs.product-prefix }}
           EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+          PYTHONPATH: .pipeline/src
         shell: bash
         run: |
           set -euo pipefail
@@ -149,6 +150,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.source-sha }}
           EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
           MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
+          PYTHONPATH: .pipeline/src
         run: |
           set -euo pipefail
           python -m pipeline.release.rolling verify \
