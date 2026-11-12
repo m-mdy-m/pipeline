@@ -66,6 +66,12 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertIn("sha256:$expected_sha", self.publisher)
         self.assertIn("expected_size", self.publisher)
 
+    def test_remote_asset_names_are_parsed_without_shell_or_jq_interpolation(self) -> None:
+        self.assertNotIn("select(.name ==", self.publisher)
+        self.assertNotIn("awk -F", self.publisher)
+        self.assertIn("fields = line.split", self.publisher)
+        self.assertIn("remote_asset_state", self.publisher)
+
     def test_manifest_is_uploaded_after_packages_and_before_promotion(self) -> None:
         package_upload = self.publisher.index("# Upload commit-qualified package assets")
         manifest_upload = self.publisher.index("# Upload the authoritative manifest last")
@@ -81,7 +87,8 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         prune = self.publisher.index("# Prune old assets only after the new inventory")
         self.assertLess(update_release, verify_flags)
         self.assertLess(verify_flags, prune)
-        self.assertIn('[[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]]', self.publisher)
+        self.assertIn('prefix = f"rolling-{product}-"', self.publisher)
+        self.assertIn('name.startswith(prefix)', self.publisher)
 
 
     def test_publisher_script_has_valid_bash_syntax(self) -> None:
