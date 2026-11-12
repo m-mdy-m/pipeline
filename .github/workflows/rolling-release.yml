@@ -175,6 +175,7 @@ jobs:
           SOURCE_BRANCH: ${{ inputs.source-branch }}
           SOURCE_SHA: ${{ inputs.source-sha }}
           SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}
           PRODUCT_PREFIX: ${{ inputs.product-prefix }}
           ASSET_DIRECTORY: rolling-assets
           MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
