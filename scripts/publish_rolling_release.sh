@@ -153,15 +153,16 @@ gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
   --jq '.[] | [.name, (.size | tostring), (.digest // "")] | @tsv' > "$inventory"
 while IFS= read -r asset; do
   [[ -n "$asset" ]] || continue
-  name="$(basename "$asset")"
-  expected_sha="$(sha256sum "$asset" | awk '{print $1}')"
-  expected_size="$(stat -c '%s' "$asset")"
-  row="$(awk -F '\t' -v name="$name" '$1 == name { print; exit }' "$inventory")"
+  name="$asset"
+  asset_path="$ASSET_DIRECTORY/$asset"
+  expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
+  expected_size="$(stat -c '%s' "$asset_path")"
+  row="$(awk -F '\\t' -v name="$name" '$1 == name { print; exit }' "$inventory")"
   if [[ -z "$row" ]]; then
     echo "GitHub Release is missing candidate asset $name." >&2
     exit 1
   fi
-  IFS=$'\t' read -r remote_name remote_size remote_digest <<< "$row"
+  IFS=$'\\t' read -r remote_name remote_size remote_digest <<< "$row"
   if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
     echo "GitHub Release has a digest/size mismatch for $name." >&2
     exit 1
