@@ -145,10 +145,10 @@ jobs:
           newest_identity = (newest["id"], newest["run_attempt"])
           publish = identity == newest_identity
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              output.write(f"publish={str(publish).lower()}\\n")
-              output.write(f"workflow_id={source['workflow_id']}\\n")
-              output.write(f"latest_successful_run_id={newest['id']}\\n")
-              output.write(f"latest_successful_run_attempt={newest['run_attempt']}\\n")
+              output.write(f"publish={str(publish).lower()}\n")
+              output.write(f"workflow_id={source['workflow_id']}\n")
+              output.write(f"latest_successful_run_id={newest['id']}\n")
+              output.write(f"latest_successful_run_attempt={newest['run_attempt']}\n")
           if not publish:
               print(f"Skipping stale run {identity}; newest successful main CI is {newest_identity}.")
           else:
