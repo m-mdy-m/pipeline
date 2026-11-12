@@ -288,7 +288,7 @@ def prepare_rolling_assets(
         "manifest": manifest_name,
         "checksums": sums_name,
     }
-    inventory_path = output_root / "rolling-inventory.json"
+    inventory_path = output_root.parent / "rolling-inventory.json"
     _atomic_json(inventory_path, inventory)
     return inventory
 
