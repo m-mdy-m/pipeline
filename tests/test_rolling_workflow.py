@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import subprocess
 import unittest
 
 
@@ -76,6 +78,18 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertLess(update_release, verify_flags)
         self.assertLess(verify_flags, prune)
         self.assertIn('[[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]]', self.publisher)
+
+
+    def test_publisher_script_has_valid_bash_syntax(self) -> None:
+        if shutil.which("bash") is None:
+            self.skipTest("bash is not installed")
+        result = subprocess.run(
+            ["bash", "-n", str(PUBLISHER)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_tag_move_is_guarded_by_latest_main_and_verified_release_assets(self) -> None:
         assert_main = self.publisher.index("assert_fresh_main", self.publisher.index("# Recheck immediately"))
