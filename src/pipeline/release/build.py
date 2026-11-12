@@ -553,6 +553,22 @@ def assemble_release_assets(
                         }
                     )
 
+        # Project-owned release metadata may be prepared after matrix artifacts
+        # have been downloaded. When target directories exist, include regular
+        # files at the asset root as shared release assets instead of silently
+        # dropping them from the assembled bundle.
+        if target_roots:
+            for entry in sorted(root.iterdir(), key=lambda item: item.name):
+                if entry.is_file() and entry.name != "SHA256SUMS":
+                    records.append(
+                        {
+                            "source": entry,
+                            "target": "shared",
+                            "name": entry.name,
+                            "generated": False,
+                        }
+                    )
+
         if not records:
             raise BuildReleaseError("No release artifacts were downloaded")
 
