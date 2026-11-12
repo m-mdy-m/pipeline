@@ -338,12 +338,15 @@ fi
 
 # Prune old assets only after the new inventory and prerelease are published.
 # If main advanced, leave old assets; the next successful run can retry pruning.
+# Re-fetch immediately before computing deletions. The per-repository concurrency
+# group serializes callers; the source SHA guard also retains same-commit assets.
 assert_fresh_main
-python - "$inventory" "$expected_local" "$PRODUCT_PREFIX" <<'PY' > "$tmp/obsolete-asset-ids.txt"
+load_remote_inventory "$inventory"
+python - "$inventory" "$expected_local" "$PRODUCT_PREFIX" "$SOURCE_SHA" <<'PY' > "$tmp/obsolete-asset-ids.txt"
 import sys
 from pathlib import Path
 
-inventory_path, names_path, product = sys.argv[1:]
+inventory_path, names_path, product, source_sha = sys.argv[1:]
 current = set(Path(names_path).read_text(encoding="utf-8").splitlines())
 prefix = f"rolling-{product}-"
 for line in Path(inventory_path).read_text(encoding="utf-8").splitlines():
@@ -351,7 +354,7 @@ for line in Path(inventory_path).read_text(encoding="utf-8").splitlines():
     if len(fields) != 4:
         raise SystemExit("GitHub returned a malformed release-asset inventory row")
     name, _size, _digest, asset_id = fields
-    if name.startswith(prefix) and name not in current:
+    if name.startswith(prefix) and name not in current and source_sha not in name:
         if not asset_id.isdigit() or int(asset_id) <= 0:
             raise SystemExit(f"invalid GitHub asset ID for {name}")
         print(asset_id)
