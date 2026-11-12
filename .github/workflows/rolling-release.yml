@@ -160,16 +160,12 @@ jobs:
 
       - name: Check source ancestry and current latest pointer
         id: freshness
+        if: steps.source.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
           MAIN_HEAD="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH^{commit}")"
-          if ! git merge-base --is-ancestor "$SOURCE_COMMIT" "$MAIN_HEAD"; then
-            echo "::error title=Invalid source revision::The verified source commit is not in the current main history."
-            exit 1
-          fi
-
           OLD_LATEST_SHA=""
           if tag_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest" 2>/dev/null)"; then
             tag_type="$(jq -r '.object.type' <<<"$tag_ref")"
@@ -179,17 +175,19 @@ jobs:
             else
               OLD_LATEST_SHA="$tag_object"
             fi
-            if [[ "$OLD_LATEST_SHA" != "$SOURCE_COMMIT" ]]; then
-              if git merge-base --is-ancestor "$SOURCE_COMMIT" "$OLD_LATEST_SHA"; then
-                echo "The latest tag already points to a newer descendant; this event is stale."
-                echo "publish=false" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              if ! git merge-base --is-ancestor "$OLD_LATEST_SHA" "$SOURCE_COMMIT"; then
-                echo "::error title=Latest history diverged::Refusing a non-fast-forward rolling release."
-                exit 1
-              fi
-            fi
+          fi
+          decision="$(python -m pipeline.release.rolling freshness \
+            --current-latest "$OLD_LATEST_SHA" \
+            --candidate "$SOURCE_COMMIT" \
+            --main-head "$MAIN_HEAD" \
+            --candidate-run-id "$SOURCE_RUN_ID" \
+            --candidate-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --latest-successful-run-id "\${{ steps.source.outputs.latest_successful_run_id }}" \
+            --latest-successful-run-attempt "\${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
+          if [[ "$decision" == "stale" ]]; then
+            echo "The successful CI run is stale relative to the latest published build; nothing will be changed."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           {
             echo "publish=true"
@@ -218,7 +216,7 @@ jobs:
             --source-commit "$SOURCE_COMMIT" \
             --source-run-id "$SOURCE_RUN_ID" \
             --source-run-attempt "$SOURCE_RUN_ATTEMPT"
-          test -s rolling-assets/rolling-inventory.json
+          test -s rolling-inventory.json
 
       - name: Create a draft latest Release when none exists
         if: steps.freshness.outputs.publish == 'true'
@@ -276,15 +274,15 @@ jobs:
         if: steps.freshness.outputs.publish == 'true'
         shell: bash
         env:
-          RELEASE_ID: ${{ steps.release.outputs.release_id }}
-          RELEASE_CREATED: ${{ steps.release.outputs.created }}
-          OLD_LATEST_SHA: ${{ steps.freshness.outputs.old_latest_sha }}
+          RELEASE_ID: \${{ steps.release.outputs.release_id }}
+          RELEASE_CREATED: \${{ steps.release.outputs.created }}
+          OLD_LATEST_SHA: \${{ steps.freshness.outputs.old_latest_sha }}
         run: |
           set -euo pipefail
-          # Another main CI run may have completed while this bundle was uploading.
+          # A newer successful main CI run may finish while the candidate uploads.
           gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run-final.json"
           gh api "repos/$REPOSITORY/actions/runs?branch=$SOURCE_BRANCH&event=push&status=completed&per_page=100" > "$RUNNER_TEMP/recent-runs-final.json"
-          python - "$RUNNER_TEMP/source-run-final.json" "$RUNNER_TEMP/recent-runs-final.json" <<'PY'
+          decision="$(python - "$RUNNER_TEMP/source-run-final.json" "$RUNNER_TEMP/recent-runs-final.json" <<'PY'
           import json
           import os
           import sys
@@ -300,6 +298,9 @@ jobs:
               and run.get("conclusion") == "success"
               and (run.get("head_repository") or {}).get("full_name") == os.environ["REPOSITORY"]
           ]
+          if not candidates:
+              print("stale")
+              raise SystemExit(0)
           newest = max(
               candidates,
               key=lambda run: (int(run.get("run_number", 0)), int(run.get("run_attempt", 0)),
@@ -308,13 +309,33 @@ jobs:
           if (newest.get("id"), newest.get("run_attempt")) != (
               int(os.environ["SOURCE_RUN_ID"]), int(os.environ["SOURCE_RUN_ATTEMPT"])
           ):
-              raise SystemExit("A newer successful main CI run completed while the candidate was uploading.")
+              print("stale")
+              raise SystemExit(0)
           if source.get("conclusion") != "success" or source.get("head_sha") != os.environ["SOURCE_COMMIT"]:
-              raise SystemExit("The exact upstream source run no longer matches the verified candidate.")
+              print("stale")
+              raise SystemExit(0)
+          print("publish")
           PY
+          )"
+          if [[ "$decision" != "publish" ]]; then
+            echo "A newer successful main CI run completed during upload; preserving the current latest release."
+            exit 0
+          fi
+
           git fetch --no-tags origin "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
           MAIN_HEAD="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH^{commit}")"
-          git merge-base --is-ancestor "$SOURCE_COMMIT" "$MAIN_HEAD"
+          decision="$(python -m pipeline.release.rolling freshness \
+            --current-latest "$OLD_LATEST_SHA" \
+            --candidate "$SOURCE_COMMIT" \
+            --main-head "$MAIN_HEAD" \
+            --candidate-run-id "$SOURCE_RUN_ID" \
+            --candidate-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --latest-successful-run-id "\${{ steps.source.outputs.latest_successful_run_id }}" \
+            --latest-successful-run-attempt "\${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
+          if [[ "$decision" == "stale" ]]; then
+            echo "A newer latest tag won the race; leaving its release untouched."
+            exit 0
+          fi
 
           current_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest")"
           current_type="$(jq -r '.object.type' <<<"$current_ref")"
@@ -325,42 +346,25 @@ jobs:
             current_sha="$current_object"
           fi
           if [[ "$current_sha" != "$SOURCE_COMMIT" ]]; then
-            if git merge-base --is-ancestor "$SOURCE_COMMIT" "$current_sha"; then
-              echo "A newer latest tag won the race; leaving its release untouched."
-              exit 0
-            fi
-            if ! git merge-base --is-ancestor "$current_sha" "$SOURCE_COMMIT"; then
-              echo "::error title=Latest history diverged::Refusing a non-fast-forward rolling promotion."
-              exit 1
-            fi
-          fi
-
-          tag_changed=false
-          if [[ "$current_sha" != "$SOURCE_COMMIT" ]]; then
             gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest" \
               -f "sha=$SOURCE_COMMIT" -F "force=true" >/dev/null
-            tag_changed=true
           fi
 
           python - <<'PY' > "$RUNNER_TEMP/latest-release-update.json"
           import json
           import os
           from pathlib import Path
-          import hashlib
-
-          inventory = json.loads(Path("rolling-assets/rolling-inventory.json").read_text(encoding="utf-8"))
-          manifest = inventory["manifest"]
-          checksums = inventory["checksums"]
+          inventory = json.loads(Path("rolling-inventory.json").read_text(encoding="utf-8"))
           body = "\n".join([
               "# CDIN latest development build",
               "",
-              f"- Verified source commit: `{os.environ['SOURCE_COMMIT']}`",
-              f"- Successful CI run: [{os.environ['SOURCE_RUN_ID']}](https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['SOURCE_RUN_ID']}) (attempt {os.environ['SOURCE_RUN_ATTEMPT']})",
-              f"- Product manifest: `{manifest}`",
-              f"- Checksums: `{checksums}`",
+              f"Verified source commit: {os.environ['SOURCE_COMMIT']}",
+              f"Successful CI run: {os.environ['SOURCE_RUN_ID']} (attempt {os.environ['SOURCE_RUN_ATTEMPT']})",
+              f"Product manifest: {inventory['manifest']}",
+              f"Checksums: {inventory['checksums']}",
               "",
-              "This is a rolling prerelease development build, not a stable SemVer release. " 
-              "The manifest identifies the exact six native OS/profile distributions and component revisions.",
+              "Rolling prerelease development build; not a stable SemVer release.",
+              "The linked manifest identifies all six native OS/profile distributions, component versions and immutable source revisions.",
           ])
           print(json.dumps({
               "name": "CDIN latest development build",
@@ -373,12 +377,14 @@ jobs:
 
           if ! gh api --method PATCH "repos/$REPOSITORY/releases/$RELEASE_ID" \
               --input "$RUNNER_TEMP/latest-release-update.json" >/dev/null; then
-            echo "::error title=Latest release update failed::Rolling tag was moved but GitHub Release metadata could not be promoted; rolling tag rollback is attempted."
+            echo "::error title=Latest release update failed::Rolling tag was moved but GitHub Release metadata could not be promoted; restoring the previous tag/release state."
             if [[ -n "$OLD_LATEST_SHA" ]]; then
               gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest" \
                 -f "sha=$OLD_LATEST_SHA" -F "force=true" >/dev/null || true
-            elif [[ "$RELEASE_CREATED" == "true" ]]; then
+            else
               gh api --method DELETE "repos/$REPOSITORY/git/ref/tags/latest" >/dev/null || true
+            fi
+            if [[ "$RELEASE_CREATED" == "true" ]]; then
               gh api --method DELETE "repos/$REPOSITORY/releases/$RELEASE_ID" >/dev/null || true
             fi
             exit 1
@@ -388,7 +394,8 @@ jobs:
           gh api --paginate --slurp \
             "repos/$REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
             > "$RUNNER_TEMP/post-publish-assets.json"
-          python - "$RUNNER_TEMP/post-publish-assets.json" rolling-assets/rolling-inventory.json <<'PY'
+          python - "$RUNNER_TEMP/post-publish-assets.json" rolling-inventory.json \
+            > "$RUNNER_TEMP/old-assets-to-prune.txt" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -403,7 +410,6 @@ jobs:
           ]
           print("\n".join(str(item) for item in remove))
           PY
-          > "$RUNNER_TEMP/old-assets-to-prune.txt"
           while IFS= read -r asset_id; do
             [[ -n "$asset_id" ]] || continue
             gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id" >/dev/null || true
