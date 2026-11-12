@@ -158,10 +158,12 @@ class RollingReleasePreparationTests(unittest.TestCase):
             verify_remote_assets(inventory, remote)
 
     def test_latest_guard_rejects_a_delayed_older_successful_run(self) -> None:
+        current = "b" * 40
+        later = "c" * 40
         ancestry = {
-            (SOURCE_SHA, "b" * 40): True,
-            (SOURCE_SHA, "c" * 40): True,
-            ("b" * 40, "c" * 40): True,
+            (SOURCE_SHA, current): True,
+            (SOURCE_SHA, later): True,
+            (current, later): True,
         }
 
         def is_ancestor(parent: str, child: str) -> bool:
@@ -169,9 +171,13 @@ class RollingReleasePreparationTests(unittest.TestCase):
 
         self.assertEqual(
             latest_action(
-                current_latest="b" * 40,
+                current_latest=current,
                 candidate=SOURCE_SHA,
-                main_head="c" * 40,
+                main_head=later,
+                candidate_run_id=RUN_ID,
+                candidate_run_attempt=RUN_ATTEMPT,
+                latest_successful_run_id="43170000002",
+                latest_successful_run_attempt="1",
                 is_ancestor=is_ancestor,
             ),
             "stale",
@@ -179,12 +185,34 @@ class RollingReleasePreparationTests(unittest.TestCase):
         self.assertEqual(
             latest_action(
                 current_latest=SOURCE_SHA,
-                candidate="b" * 40,
-                main_head="c" * 40,
+                candidate=SOURCE_SHA,
+                main_head=later,
+                candidate_run_id="43170000002",
+                candidate_run_attempt="1",
+                latest_successful_run_id="43170000002",
+                latest_successful_run_attempt="1",
                 is_ancestor=is_ancestor,
             ),
-            "publish",
+            "already-current",
         )
+
+    def test_latest_guard_allows_only_the_newest_successful_main_run(self) -> None:
+        current = "a" * 40
+        candidate = "b" * 40
+        main_head = "c" * 40
+        ancestry = {(current, candidate): True, (current, main_head): True, (candidate, main_head): True}
+
+        decision = latest_action(
+            current_latest=current,
+            candidate=candidate,
+            main_head=main_head,
+            candidate_run_id="43170000003",
+            candidate_run_attempt="1",
+            latest_successful_run_id="43170000003",
+            latest_successful_run_attempt="1",
+            is_ancestor=lambda parent, child: parent == child or ancestry.get((parent, child), False),
+        )
+        self.assertEqual(decision, "publish")
 
     def test_latest_guard_rejects_diverged_candidate(self) -> None:
         with self.assertRaisesRegex(RollingReleaseError, "not on the same mainline"):
@@ -192,8 +220,13 @@ class RollingReleasePreparationTests(unittest.TestCase):
                 current_latest="b" * 40,
                 candidate="c" * 40,
                 main_head="d" * 40,
+                candidate_run_id=RUN_ID,
+                candidate_run_attempt=RUN_ATTEMPT,
+                latest_successful_run_id=RUN_ID,
+                latest_successful_run_attempt=RUN_ATTEMPT,
                 is_ancestor=lambda parent, child: parent == child or (parent, child) == ("c" * 40, "d" * 40),
             )
+
 
 
 if __name__ == "__main__":
