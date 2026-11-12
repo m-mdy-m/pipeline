@@ -109,6 +109,19 @@ class RollingReleasePreparationTests(unittest.TestCase):
             expected_target_profiles=matrix,
         )
 
+    def refresh_rolling_manifest(self, result: dict) -> None:
+        manifest_path = self.output / result["manifest_name"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for asset in manifest["assets"]:
+            path = self.output / asset["name"]
+            asset["size_bytes"] = path.stat().st_size
+            asset["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        (self.output / (result["manifest_name"] + ".sha256")).write_text(
+            f"{digest}  {result['manifest_name']}\\n", encoding="ascii"
+        )
+
     def test_prepares_exact_matrix_and_commit_qualified_assets(self) -> None:
         result = self.prepare()
         self.assertEqual(result["source_commit"], SOURCE_SHA)
@@ -191,6 +204,38 @@ class RollingReleasePreparationTests(unittest.TestCase):
         manifest["packages"].pop()
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(RollingReleaseError, "package inventory is incomplete"):
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
+            )
+
+    def test_verifier_rejects_checksum_sidecar_that_disagrees_with_archive(self) -> None:
+        result = self.prepare()
+        package = result["packages"][0]
+        sidecar = self.output / package["checksum"]
+        sidecar.write_text(f"{'0' * 64}  {package['archive']['name']}\\n", encoding="ascii")
+        self.refresh_rolling_manifest(result)
+        with self.assertRaisesRegex(RollingReleaseError, "checksum sidecar is inconsistent"):
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
+            )
+
+    def test_verifier_rejects_package_manifest_from_another_commit(self) -> None:
+        result = self.prepare()
+        package = result["packages"][0]
+        package_manifest_path = self.output / package["package_manifest"]
+        package_manifest = json.loads(package_manifest_path.read_text(encoding="utf-8"))
+        package_manifest["source_commit"] = "c" * 40
+        package_manifest_path.write_text(json.dumps(package_manifest), encoding="utf-8")
+        self.refresh_rolling_manifest(result)
+        with self.assertRaisesRegex(RollingReleaseError, "provenance/target/profile mismatch"):
             verify_rolling_assets(
                 output_directory=self.output,
                 manifest_name=result["manifest_name"],
