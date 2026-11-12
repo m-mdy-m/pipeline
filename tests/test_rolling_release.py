@@ -90,14 +90,21 @@ class RollingReleasePreparationTests(unittest.TestCase):
         )
         return directory
 
-    def prepare(self, *, source_sha: str = SOURCE_SHA, matrix: str = MATRIX) -> dict:
+    def prepare(
+        self,
+        *,
+        source_sha: str = SOURCE_SHA,
+        matrix: str = MATRIX,
+        source_run_id: str = "123456",
+        source_run_attempt: str = "2",
+    ) -> dict:
         return prepare_rolling_assets(
             artifact_root=self.artifacts,
             output_directory=self.output,
             repository="cdin-editor/cdin",
             source_sha=source_sha,
-            source_run_id="123456",
-            source_run_attempt="2",
+            source_run_id=source_run_id,
+            source_run_attempt=source_run_attempt,
             product_prefix="cdin",
             expected_target_profiles=matrix,
         )
@@ -126,6 +133,12 @@ class RollingReleasePreparationTests(unittest.TestCase):
         )
         self.assertEqual(report["source_commit"], SOURCE_SHA)
         self.assertEqual(report["asset_count"], 8)
+
+    def test_rejects_zero_or_nonpositive_workflow_run_identity(self) -> None:
+        with self.assertRaisesRegex(RollingReleaseError, "positive decimal integers"):
+            self.prepare(source_run_id="0")
+        with self.assertRaisesRegex(RollingReleaseError, "positive decimal integers"):
+            self.prepare(source_run_attempt="00")
 
     def test_rejects_artifact_built_from_another_commit(self) -> None:
         directory = next(self.artifacts.iterdir())
