@@ -224,6 +224,81 @@ The optional `source-ref` input lets an orchestration workflow publish a tag tha
 
 Use `dry-run: true` to test the packaging path without publishing.
 
+## Publish a rolling development release
+
+Use `rolling-release.yml` when a product repository needs a mutable `latest`
+channel backed by a GitHub Release and by real, already-built application
+archives. It is deliberately separate from both `release.yml` (immutable
+SemVer releases) and `source-release.yml` (contributor source snapshots).
+
+The caller must first complete its full native product matrix and upload one
+installed-product artifact for every supported OS/profile combination. The
+reusable workflow downloads the artifacts from the exact successful upstream
+CI run ID and attempt; it never downloads artifacts from the current/default
+branch run by accident.
+
+The rolling publisher validates all six target/profile bundles, checks every
+archive against its adjacent SHA-256 sidecar and machine-readable distribution
+manifest, and creates uniquely named candidate assets. It then verifies the
+GitHub Release API reports the exact digest and byte size for every uploaded
+asset before moving the mutable `latest` tag. The public `latest-manifest-*.json`
+binds the source commit, successful CI run, Registry Manifest digests and exact
+component revisions for all six distributions. A separate checksum list
+covers the published archive, sidecars and manifest.
+
+Publishing is serialized per repository. The workflow checks that the source
+run is the newest successful main-branch CI run both before downloading and
+again after upload. A delayed older success is a safe no-op. The publisher also
+refuses a commit outside current main history or a non-fast-forward move from
+the existing latest tag. Superseded rolling assets are pruned only after the
+new tag and GitHub Release metadata are successfully promoted.
+
+Example caller (pin `pipeline-ref` to the immutable Pipeline commit that
+contains the workflow and verifier):
+
+~~~yaml
+name: Publish latest after successful product CI
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  latest:
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@<immutable-pipeline-commit>
+    permissions:
+      actions: read
+      contents: write
+    with:
+      pipeline-ref: <immutable-pipeline-commit>
+      source-run-id: ${{ github.event.workflow_run.id }}
+      source-run-attempt: ${{ github.event.workflow_run.run_attempt }}
+      source-commit: ${{ github.event.workflow_run.head_sha }}
+      source-branch: main
+      artifact-pattern: cdin-installed-product-*
+~~~
+
+The upstream CI job must upload archives named with the contract used by the
+publisher, for example `cdin-installed-product-Ubuntu-tui`,
+`cdin-installed-product-macOS-gui-sdl`, and
+`cdin-installed-product-Windows-tui`. The complete set is Linux, macOS and
+Windows crossed with TUI and GUI-SDL. The installed archives must be runnable
+after extraction; a source archive is not a substitute.
+
+The rolling GitHub Release is always a prerelease and explicitly does not
+become GitHub's `latest` stable release. Mutable `latest` is a development
+pointer; it must not be used as a dependency identity by Registry or a SemVer
+consumer. Registry/component releases and product SemVer remain immutable.
+
 ## Version and changelog rules
 
 Tags use this format:
