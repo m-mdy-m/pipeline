@@ -43,7 +43,7 @@ on:
     secrets:
       release-token:
         description: "Token permitted to create/update the fixed tag and rolling GitHub Release"
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -169,7 +169,7 @@ jobs:
 
       - name: Promote the verified rolling release with freshness and repair guards
         env:
-          GH_TOKEN: ${{ secrets.release-token }}
+          GH_TOKEN: ${{ secrets.release-token || github.token }}
           SOURCE_RUN_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ inputs.repository }}
           SOURCE_BRANCH: ${{ inputs.source-branch }}
