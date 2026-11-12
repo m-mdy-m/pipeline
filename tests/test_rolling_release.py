@@ -184,6 +184,21 @@ class RollingReleasePreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(RollingReleaseError, "symlink"):
             self.prepare()
 
+    def test_verifier_rejects_missing_package_pair_even_when_target_list_is_intact(self) -> None:
+        result = self.prepare()
+        manifest_path = self.output / result["manifest_name"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["packages"].pop()
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(RollingReleaseError, "package inventory is incomplete"):
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
+            )
+
     def test_verifier_rejects_modified_prepared_asset(self) -> None:
         result = self.prepare()
         asset = self.output / result["assets"][0]["name"]
