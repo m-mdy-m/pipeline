@@ -75,7 +75,7 @@ jobs:
       - name: Verify the source workflow run and its immutable commit identity
         id: source
         env:
-          GH_TOKEN: ${{ secrets.release-token }}
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ inputs.repository }}
           SOURCE_RUN_ID: ${{ inputs.source-run-id }}
           SOURCE_BRANCH: ${{ inputs.source-branch }}
@@ -163,6 +163,7 @@ jobs:
       - name: Promote the verified rolling release with freshness and repair guards
         env:
           GH_TOKEN: ${{ secrets.release-token }}
+          SOURCE_RUN_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ inputs.repository }}
           SOURCE_BRANCH: ${{ inputs.source-branch }}
           SOURCE_SHA: ${{ inputs.source-sha }}
