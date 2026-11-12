@@ -75,8 +75,8 @@ load_remote_inventory() {
     --jq '.[] | [.name, (.size | tostring), (.digest // ""), (.id | tostring)] | @tsv' > "$output"
 }
 
-# Exit non-zero for duplicate names, mismatched immutable bytes, malformed rows,
-# or non-regular local files. Print "present" or "missing" for a safe retry.
+# Exit non-zero on duplicate names, different bytes under an immutable name,
+# malformed rows, or a non-regular local file. Print "present" or "missing".
 remote_asset_state() {
   local inventory="$1"
   local name="$2"
@@ -91,7 +91,11 @@ local_path = Path(local_name)
 if not local_path.is_file() or local_path.is_symlink():
     raise SystemExit(f"candidate asset is missing or unsafe: {local_path}")
 expected_size = local_path.stat().st_size
-expected_digest = hashlib.sha256(local_path.read_bytes()).hexdigest()
+digest = hashlib.sha256()
+with local_path.open("rb") as stream:
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+expected_digest = digest.hexdigest()
 matches = []
 for line in Path(inventory_path).read_text(encoding="utf-8").splitlines():
     fields = line.split("\t")
@@ -189,11 +193,10 @@ while IFS= read -r name; do
     continue
   fi
   gh release upload latest "$asset_path" --repo "$REPOSITORY"
-  # Refresh after each upload so a partial retry observes the exact current state.
-  load_remote_inventory "$inventory"
 done < "$expected_local"
 
-# Upload the authoritative manifest only after its package assets are present.
+# Refresh once after package upload, then add the authoritative manifest last.
+load_remote_inventory "$inventory"
 for name in "$MANIFEST_NAME" "$MANIFEST_NAME.sha256"; do
   asset_path="$ASSET_DIRECTORY/$name"
   state="$(remote_asset_state "$inventory" "$name" "$asset_path")"
@@ -201,12 +204,11 @@ for name in "$MANIFEST_NAME" "$MANIFEST_NAME.sha256"; do
     continue
   fi
   gh release upload latest "$asset_path" --repo "$REPOSITORY"
-  load_remote_inventory "$inventory"
 done
+load_remote_inventory "$inventory"
 
-# Independently compare every local package/checksum/manifest byte to GitHub's
-# complete paginated asset inventory. Python splits TSV rows; no shell IFS/jq
-# interpolation is used for remote filenames.
+# Compare every local package/checksum/manifest byte with GitHub's full,
+# paginated inventory. Python parses TSV rows, avoiding shell IFS and jq injection.
 python - "$inventory" "$ASSET_DIRECTORY" "$expected_local" <<'PY'
 import hashlib
 import sys
@@ -231,15 +233,17 @@ for name in names:
         raise SystemExit(f"local candidate is missing or unsafe: {name}")
     if name not in remote:
         raise SystemExit(f"GitHub Release is missing candidate asset: {name}")
-    expected_size = str(path.stat().st_size)
-    expected_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
     remote_size, remote_digest, _ = remote[name]
-    if remote_size != expected_size or remote_digest != f"sha256:{expected_digest}":
+    if remote_size != str(path.stat().st_size) or remote_digest != f"sha256:{digest.hexdigest()}":
         raise SystemExit(f"GitHub Release size/digest mismatch for {name}")
 print(f"Verified {len(names)} candidate Release assets against GitHub.")
 PY
 
-# Recheck the exact main SHA and source workflow immediately before promotion.
+# Recheck source identity immediately before moving the mutable tag.
 assert_fresh_main
 verify_source_run
 assert_fresh_main
@@ -305,10 +309,9 @@ if [[ "$resolved_ref" != "$SOURCE_SHA" ]]; then
 fi
 
 # Prune old assets only after the new inventory and prerelease are published.
-# If main advanced, leave older assets in place; the next successful run retries.
+# If main advanced, leave old assets; the next successful run can retry pruning.
 assert_fresh_main
-current_names="$expected_local"
-python - "$inventory" "$current_names" "$PRODUCT_PREFIX" <<'PY' > "$tmp/obsolete-asset-ids.txt"
+python - "$inventory" "$expected_local" "$PRODUCT_PREFIX" <<'PY' > "$tmp/obsolete-asset-ids.txt"
 import sys
 from pathlib import Path
 
