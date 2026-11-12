@@ -13,6 +13,7 @@ from typing import Any
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+PRODUCT_PROFILES = frozenset({"tui", "gui-sdl"})
 ARCHIVE_SUFFIXES = (".tar.gz", ".zip")
 
 
@@ -79,7 +80,7 @@ def _expected_pairs(value: str) -> set[tuple[str, str]]:
         profile = item.get("profile")
         if not isinstance(target, str) or not re.fullmatch(r"(linux|macos|windows)-(x86_64|arm64)", target):
             raise RollingReleaseError(f"invalid expected native target: {target!r}")
-        if profile not in {"tui", "gui-sdl"}:
+        if profile not in PRODUCT_PROFILES:
             raise RollingReleaseError(f"invalid expected product profile: {profile!r}")
         pair = (target, profile)
         if pair in result:
