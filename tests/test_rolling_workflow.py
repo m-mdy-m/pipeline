@@ -22,6 +22,16 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertIn("group: rolling-product-${{ inputs.repository }}", self.workflow)
         self.assertIn("cancel-in-progress: false", self.workflow)
 
+    def test_source_run_is_bound_to_the_exact_artifact_producing_workflow(self) -> None:
+        self.assertIn("source-workflow-path:", self.workflow)
+        self.assertIn("SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}", self.workflow)
+        self.assertIn('(.path == $workflow)', self.workflow)
+        self.assertIn('SOURCE_WORKFLOW_PATH', self.publisher)
+        self.assertIn('--arg workflow "$SOURCE_WORKFLOW_PATH"', self.publisher)
+
+    def test_publisher_preserves_inherited_pythonpath(self) -> None:
+        self.assertIn('PYTHONPATH=".pipeline/src:src${PYTHONPATH:+:$PYTHONPATH}"', self.publisher)
+
     def test_only_a_successful_exact_main_push_can_be_promoted(self) -> None:
         for expression in (
             "(.event == \"push\")",
