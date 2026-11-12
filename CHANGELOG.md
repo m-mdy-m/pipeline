@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-12
+
 ### Added
 
 - Add an optional project-owned asset-preparation hook after all release
