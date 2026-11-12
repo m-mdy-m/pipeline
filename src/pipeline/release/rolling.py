@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -384,6 +385,14 @@ def main(argv: list[str] | None = None) -> int:
     verify = sub.add_parser("verify-remote", help="verify GitHub's published asset inventory")
     verify.add_argument("--inventory", type=Path, required=True)
     verify.add_argument("--remote-assets", type=Path, required=True)
+    freshness = sub.add_parser("freshness", help="prevent stale successful CI runs from moving latest")
+    freshness.add_argument("--current-latest", default="")
+    freshness.add_argument("--candidate", required=True)
+    freshness.add_argument("--main-head", required=True)
+    freshness.add_argument("--candidate-run-id", required=True)
+    freshness.add_argument("--candidate-run-attempt", required=True)
+    freshness.add_argument("--latest-successful-run-id", required=True)
+    freshness.add_argument("--latest-successful-run-attempt", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
@@ -395,11 +404,34 @@ def main(argv: list[str] | None = None) -> int:
                 source_run_attempt=args.source_run_attempt,
             )
             print(json.dumps(result, indent=2, sort_keys=True))
-        else:
+        elif args.command == "verify-remote":
             inventory = _read_json(args.inventory, "rolling inventory")
             remote = _load_remote_assets(args.remote_assets)
             verify_remote_assets(inventory, remote)
             print(f"Verified {len(inventory['assets'])} uploaded rolling assets.")
+        else:
+            def is_ancestor(parent: str, child: str) -> bool:
+                result = subprocess.run(
+                    ["git", "merge-base", "--is-ancestor", parent, child],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode not in (0, 1):
+                    raise RollingReleaseError(result.stderr.strip() or "git merge-base failed")
+                return result.returncode == 0
+
+            decision = latest_action(
+                current_latest=args.current_latest or None,
+                candidate=args.candidate,
+                main_head=args.main_head,
+                candidate_run_id=args.candidate_run_id,
+                candidate_run_attempt=args.candidate_run_attempt,
+                latest_successful_run_id=args.latest_successful_run_id,
+                latest_successful_run_attempt=args.latest_successful_run_attempt,
+                is_ancestor=is_ancestor,
+            )
+            print(json.dumps({"decision": decision}, sort_keys=True))
     except (OSError, ValueError, RollingReleaseError, KeyError) as error:
         print(f"rolling release: {error}", file=sys.stderr)
         return 1
