@@ -50,7 +50,7 @@ class ExtractDryRunSectionTests(unittest.TestCase):
 
     def test_empty_unreleased_without_versioned_section_still_fails(self) -> None:
         with self.assertRaisesRegex(ReleaseError, "Unreleased section.*empty"):
-            extract_dry_run_section("# Changelog\\n\\n## [Unreleased]\\n", "CHANGELOG.md")
+            extract_dry_run_section("# Changelog\n\n## [Unreleased]\n", "CHANGELOG.md")
 
     def test_duplicate_unreleased_sections_still_fail_closed(self) -> None:
         changelog = """# Changelog
