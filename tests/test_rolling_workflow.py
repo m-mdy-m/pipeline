@@ -61,9 +61,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertNotIn("head -n 1", self.publisher)
         self.assertNotIn("awk -F", self.publisher)
         self.assertIn("pipeline.release.rolling verify", self.publisher)
-        self.assertNotIn("head -n 1", self.publisher)
-        self.assertNotIn("awk -F", self.publisher)
-        self.assertIn("pipeline.release.rolling verify", self.publisher)
+        self.assertIn('line.split("\\t")', self.publisher)
         self.assertIn("immutable rolling asset collision", self.publisher)
         self.assertIn("sha256:$expected_sha", self.publisher)
         self.assertIn("expected_size", self.publisher)
@@ -78,7 +76,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertLess(remote_verify, promote)
 
     def test_prerelease_is_verified_before_obsolete_assets_are_pruned(self) -> None:
-        update_release = self.publisher.index('gh api --method PATCH "repos/$REPOSITORY/releases/$release_id"')
+        update_release = self.publisher.index('gh api --method PATCH "repos/$REPOSITORY/releases/$RELEASE_ID"')
         verify_flags = self.publisher.index("(.draft == false) and (.prerelease == true)", update_release)
         prune = self.publisher.index("# Prune old assets only after the new inventory")
         self.assertLess(update_release, verify_flags)
@@ -98,7 +96,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_tag_move_is_guarded_by_latest_main_and_verified_release_assets(self) -> None:
-        assert_main = self.publisher.index("assert_fresh_main", self.publisher.index("# Recheck immediately"))
+        assert_main = self.publisher.index("assert_fresh_main", self.publisher.index("# Recheck source identity immediately before moving the mutable tag"))
         ref_update = self.publisher.index('gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest"', assert_main)
         self.assertLess(assert_main, ref_update)
         self.assertIn('repos/$REPOSITORY/git/ref/tags/latest', self.publisher)
