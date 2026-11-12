@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Promote a fully verified, commit-qualified rolling product bundle to one fixed tag.
+# This file is intentionally invoked as "bash <path>" by the reusable workflow.
 set -euo pipefail
 
 : "${GH_TOKEN:?GH_TOKEN is required}"
@@ -11,6 +12,7 @@ set -euo pipefail
 : "${PRODUCT_PREFIX:?PRODUCT_PREFIX is required}"
 : "${ASSET_DIRECTORY:?ASSET_DIRECTORY is required}"
 : "${MANIFEST_NAME:?MANIFEST_NAME is required}"
+: "${EXPECTED_TARGET_PROFILES:?EXPECTED_TARGET_PROFILES is required}"
 
 if [[ "$SOURCE_BRANCH" != "main" ]]; then
   echo "Rolling product promotion is only permitted from main; got $SOURCE_BRANCH." >&2
@@ -32,6 +34,14 @@ trap cleanup EXIT
 
 api_json() {
   gh api "$@"
+}
+
+assert_safe_asset_name() {
+  local name="$1"
+  if [[ ! "$name" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+    echo "Unsafe rolling asset filename: $name" >&2
+    return 1
+  fi
 }
 
 assert_fresh_main() {
@@ -56,6 +66,13 @@ verify_source_run() {
 assert_fresh_main
 verify_source_run
 assert_fresh_main
+
+PYTHONPATH=.pipeline/src python -m pipeline.release.rolling verify \
+  --output-directory "$ASSET_DIRECTORY" \
+  --manifest-name "$MANIFEST_NAME" \
+  --source-sha "$SOURCE_SHA" \
+  --repository "$REPOSITORY" \
+  --expected-target-profiles "$EXPECTED_TARGET_PROFILES" >/dev/null
 
 manifest_path="$ASSET_DIRECTORY/$MANIFEST_NAME"
 manifest_sha="$(sha256sum "$manifest_path" | awk '{print $1}')"
@@ -110,15 +127,16 @@ fi
 while IFS= read -r asset; do
   [[ -n "$asset" ]] || continue
   name="$asset"
+  assert_safe_asset_name "$name"
   asset_path="$ASSET_DIRECTORY/$asset"
   [[ "$name" == "$MANIFEST_NAME" || "$name" == "$MANIFEST_NAME.sha256" ]] && continue
   expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
   expected_size="$(stat -c '%s' "$asset_path")"
   found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-    --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv" | head -n 1 || true)"
+    --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv")
   if [[ -n "$found" ]]; then
     IFS=$'\t' read -r asset_id remote_size remote_digest <<< "$found"
-    if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
+    if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
       echo "Immutable rolling asset collision for $name; refusing to replace it." >&2
       exit 1
     fi
@@ -130,14 +148,15 @@ done <<< "$expected_local"
 # The manifest and its sidecar are uploaded only after all package assets.
 for asset in "$manifest_path" "$manifest_path.sha256"; do
   name="$(basename "$asset")"
+  assert_safe_asset_name "$name"
   asset_path="$asset"
   expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
   expected_size="$(stat -c '%s' "$asset_path")"
   found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-    --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv" | head -n 1 || true)"
+    --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv")
   if [[ -n "$found" ]]; then
     IFS=$'\t' read -r asset_id remote_size remote_digest <<< "$found"
-    if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
+    if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
       echo "Immutable rolling manifest collision for $name; refusing to replace it." >&2
       exit 1
     fi
@@ -163,7 +182,7 @@ while IFS= read -r asset; do
     exit 1
   fi
   IFS=$'\\t' read -r remote_name remote_size remote_digest <<< "$row"
-  if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
+  if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
     echo "GitHub Release has a digest/size mismatch for $name." >&2
     exit 1
   fi
@@ -239,9 +258,10 @@ current_names="$tmp/current-assets.txt"
 printf '%s\n' "$expected_local" > "$current_names"
 while IFS=$'\t' read -r name size digest; do
   [[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]] || continue
+  assert_safe_asset_name "$name"
   if ! grep -Fxq "$name" "$current_names"; then
     asset_id="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-      --jq ".[] | select(.name == \"$name\") | .id" | head -n 1)"
+      --jq ".[] | select(.name == \"$name\") | .id")"
     if [[ "$asset_id" =~ ^[0-9]+$ ]]; then
       gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id" >/dev/null
     fi
