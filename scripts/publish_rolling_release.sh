@@ -129,8 +129,8 @@ done <<< "$expected_local"
 
 # The manifest and its sidecar are uploaded only after all package assets.
 for asset in "$manifest_path" "$manifest_path.sha256"; do
-  name="$asset"
-  asset_path="$ASSET_DIRECTORY/$asset"
+  name="$(basename "$asset")"
+  asset_path="$asset"
   expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
   expected_size="$(stat -c '%s' "$asset_path")"
   found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
