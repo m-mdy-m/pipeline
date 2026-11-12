@@ -147,7 +147,7 @@ class BuildReleaseTests(unittest.TestCase):
                 "frontend-gui-sdl-1.1.1.json",
             )
             for name in metadata_names:
-                (assets / name).write_text('{"schema_version":"1.2.0"}\\n', encoding="utf-8")
+                (assets / name).write_text('{"schema_version":"1.2.0"}', encoding="utf-8")
 
             result = assemble_release_assets(assets)
 
