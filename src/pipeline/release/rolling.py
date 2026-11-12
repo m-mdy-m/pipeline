@@ -439,6 +439,36 @@ def verify_rolling_assets(
                 f"package/asset inventory references do not agree for {target}/{profile}"
             )
 
+        archive_path = root / archive_record["name"]
+        checksum_asset_path = root / checksum_record["name"]
+        package_manifest_path = root / manifest_record["name"]
+        checksum_content = checksum_asset_path.read_text(encoding="ascii").strip()
+        if checksum_content != f'{archive["sha256"]}  {archive["name"]}':
+            raise RollingReleaseError(
+                f"package archive checksum sidecar is inconsistent for {target}/{profile}"
+            )
+        package_manifest = _json_object(package_manifest_path, "rolling package manifest")
+        if (
+            package_manifest.get("source_commit") != source_sha
+            or package_manifest.get("profile") != profile
+            or _target_id(package_manifest.get("target")) != target
+            or package_manifest.get("version") != package.get("product_version")
+        ):
+            raise RollingReleaseError(
+                f"package manifest provenance/target/profile mismatch for {target}/{profile}"
+            )
+        package_archive = package_manifest.get("archive")
+        if (
+            not isinstance(package_archive, dict)
+            or package_archive.get("name") != archive["name"]
+            or package_archive.get("sha256") != archive["sha256"]
+            or package_archive.get("size_bytes") != archive["size_bytes"]
+            or archive_path.stat().st_size != archive["size_bytes"]
+        ):
+            raise RollingReleaseError(
+                f"package manifest archive identity mismatch for {target}/{profile}"
+            )
+
     checksum_path = root / (manifest_name + ".sha256")
     expected_manifest_digest = sha256_file(manifest_path)
     if checksum_path.is_symlink() or not checksum_path.is_file():
