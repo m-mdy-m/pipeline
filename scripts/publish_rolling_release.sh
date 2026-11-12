@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Promote a fully verified, commit-qualified rolling product bundle to one fixed tag.
-# This file is intentionally invoked as "bash <path>" by the reusable workflow.
+# The reusable workflow invokes this file explicitly with Bash; it need not be executable.
 set -euo pipefail
 
 : "${GH_TOKEN:?GH_TOKEN is required}"
@@ -19,7 +19,11 @@ if [[ "$SOURCE_BRANCH" != "main" ]]; then
   exit 2
 fi
 if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "SOURCE_SHA must be a full lowercase Git commit SHA." >&2
+  echo "SOURCE_SHA must be a full lowercase 40-character commit SHA." >&2
+  exit 2
+fi
+if [[ ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SOURCE_RUN_ID must be a positive decimal integer." >&2
   exit 2
 fi
 if [[ ! "$PRODUCT_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$ ]]; then
@@ -32,8 +36,29 @@ tmp="$(mktemp -d)"
 cleanup() { rm -rf "$tmp"; }
 trap cleanup EXIT
 
-api_json() {
-  gh api "$@"
+assert_fresh_main() {
+  local current
+  current="$(gh api "repos/$REPOSITORY/commits/main" --jq .sha)"
+  if [[ "$current" != "$SOURCE_SHA" ]]; then
+    echo "Refusing stale rolling run: main is $current, candidate is $SOURCE_SHA." >&2
+    return 1
+  fi
+}
+
+verify_source_run() {
+  local run_file="$tmp/source-run.json"
+  GH_TOKEN="$SOURCE_RUN_TOKEN" gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$run_file"
+  jq -e \
+    --arg repository "$REPOSITORY" \
+    --arg sha "$SOURCE_SHA" \
+    --arg branch "$SOURCE_BRANCH" \
+    '(.event == "push") and
+     (.conclusion == "success") and
+     (.head_branch == $branch) and
+     (.head_sha == $sha) and
+     (.repository.full_name == $repository) and
+     (.run_attempt | type == "number" and . > 0)' \
+    "$run_file" >/dev/null
 }
 
 assert_safe_asset_name() {
@@ -44,50 +69,79 @@ assert_safe_asset_name() {
   fi
 }
 
-assert_fresh_main() {
-  local current
-  current="$(api_json "repos/$REPOSITORY/commits/main" --jq .sha)"
-  if [[ "$current" != "$SOURCE_SHA" ]]; then
-    echo "Refusing stale rolling run: main is $current, candidate is $SOURCE_SHA." >&2
-    return 1
-  fi
+load_remote_inventory() {
+  local output="$1"
+  gh api --paginate "repos/$REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+    --jq '.[] | [.name, (.size | tostring), (.digest // ""), (.id | tostring)] | @tsv' > "$output"
 }
 
-verify_source_run() {
-  local run_file="$tmp/source-run.json"
-  GH_TOKEN="$SOURCE_RUN_TOKEN" gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$run_file"
-  jq -e     --arg repository "$REPOSITORY"     --arg sha "$SOURCE_SHA"     --arg branch "$SOURCE_BRANCH"     '(.event == "push") and
-     (.conclusion == "success") and
-     (.head_branch == $branch) and
-     (.head_sha == $sha) and
-     (.repository.full_name == $repository)'     "$run_file" >/dev/null
+# Exit non-zero for duplicate names, mismatched immutable bytes, malformed rows,
+# or non-regular local files. Print "present" or "missing" for a safe retry.
+remote_asset_state() {
+  local inventory="$1"
+  local name="$2"
+  local local_path="$3"
+  python - "$inventory" "$name" "$local_path" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+inventory_path, name, local_name = sys.argv[1:]
+local_path = Path(local_name)
+if not local_path.is_file() or local_path.is_symlink():
+    raise SystemExit(f"candidate asset is missing or unsafe: {local_path}")
+expected_size = local_path.stat().st_size
+expected_digest = hashlib.sha256(local_path.read_bytes()).hexdigest()
+matches = []
+for line in Path(inventory_path).read_text(encoding="utf-8").splitlines():
+    fields = line.split("\t")
+    if len(fields) != 4:
+        raise SystemExit("GitHub returned a malformed release-asset inventory row")
+    if fields[0] == name:
+        matches.append(fields)
+if len(matches) > 1:
+    raise SystemExit(f"GitHub returned duplicate Release assets named {name}")
+if not matches:
+    print("missing")
+    raise SystemExit(0)
+_, remote_size, remote_digest, _ = matches[0]
+if remote_size != str(expected_size) or remote_digest != f"sha256:{expected_digest}":
+    raise SystemExit(f"immutable rolling asset collision for {name}; refusing to replace it")
+print("present")
+PY
 }
 
 assert_fresh_main
 verify_source_run
 assert_fresh_main
 
+# Re-validate the complete local manifest immediately before touching GitHub.
 PYTHONPATH=.pipeline/src python -m pipeline.release.rolling verify \
   --output-directory "$ASSET_DIRECTORY" \
   --manifest-name "$MANIFEST_NAME" \
   --source-sha "$SOURCE_SHA" \
   --repository "$REPOSITORY" \
-  --expected-target-profiles "$EXPECTED_TARGET_PROFILES" >/dev/null
+  --expected-target-profiles "$EXPECTED_TARGET_PROFILES" > "$tmp/local-verification.json"
 
 manifest_path="$ASSET_DIRECTORY/$MANIFEST_NAME"
 manifest_sha="$(sha256sum "$manifest_path" | awk '{print $1}')"
-[[ -s "$manifest_path" ]]
-[[ -s "$manifest_path.sha256" ]]
+[[ -s "$manifest_path" && -s "$manifest_path.sha256" ]]
 grep -Fxq "$manifest_sha  $MANIFEST_NAME" "$manifest_path.sha256"
 
-expected_local="$(find "$ASSET_DIRECTORY" -maxdepth 1 -type f -printf '%f\n' | sort)"
-if [[ -z "$expected_local" ]]; then
+# The local asset directory must contain only safe regular files.
+expected_local="$tmp/expected-assets.txt"
+find "$ASSET_DIRECTORY" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort > "$expected_local"
+if [[ ! -s "$expected_local" ]]; then
   echo "Rolling asset directory is empty." >&2
   exit 1
 fi
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
+  assert_safe_asset_name "$name"
+done < "$expected_local"
 
-# A single Release object backs the fixed 'latest' ref. Create it as a draft on
-# first publication; retries reuse the same object and immutable asset names.
+# A single Release object backs the fixed latest ref. On first publication it
+# remains a draft until every package and the authoritative manifest are verified.
 release_file="$tmp/release.json"
 http_code="$(curl --silent --show-error --output "$release_file" --write-out '%{http_code}' \
   --header "Authorization: Bearer $GH_TOKEN" \
@@ -96,7 +150,7 @@ http_code="$(curl --silent --show-error --output "$release_file" --write-out '%{
   "https://api.github.com/repos/$REPOSITORY/releases/tags/latest")"
 case "$http_code" in
   200)
-    release_id="$(jq -r '.id' "$release_file")"
+    RELEASE_ID="$(jq -r '.id' "$release_file")"
     ;;
   404)
     initial_body="Rolling product candidate is being staged. This draft is not a published distribution."
@@ -107,7 +161,7 @@ case "$http_code" in
       -f body="$initial_body" \
       -F draft=true \
       -F prerelease=true > "$release_file"
-    release_id="$(jq -r '.id' "$release_file")"
+    RELEASE_ID="$(jq -r '.id' "$release_file")"
     ;;
   *)
     echo "Could not inspect the existing latest Release (HTTP $http_code)." >&2
@@ -115,83 +169,81 @@ case "$http_code" in
     exit 1
     ;;
 esac
-
-if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
+if [[ ! "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]; then
   echo "GitHub returned an invalid rolling Release ID." >&2
   exit 1
 fi
+export RELEASE_ID
 
-# Upload all commit-qualified assets except the top-level manifest first.
-# Existing same-name assets are reusable only when both size and digest match;
-# different bytes under one immutable source-SHA name are never overwritten.
-while IFS= read -r asset; do
-  [[ -n "$asset" ]] || continue
-  name="$asset"
-  assert_safe_asset_name "$name"
-  asset_path="$ASSET_DIRECTORY/$asset"
+inventory="$tmp/remote-assets.tsv"
+load_remote_inventory "$inventory"
+
+# Upload commit-qualified package assets first. A retry reuses exact matching
+# bytes only; no existing same-name asset is deleted or overwritten.
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
   [[ "$name" == "$MANIFEST_NAME" || "$name" == "$MANIFEST_NAME.sha256" ]] && continue
-  expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
-  expected_size="$(stat -c '%s' "$asset_path")"
-  found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-    --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv")
-  if [[ -n "$found" ]]; then
-    IFS=$'\t' read -r asset_id remote_size remote_digest <<< "$found"
-    if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
-      echo "Immutable rolling asset collision for $name; refusing to replace it." >&2
-      exit 1
-    fi
+  asset_path="$ASSET_DIRECTORY/$name"
+  state="$(remote_asset_state "$inventory" "$name" "$asset_path")"
+  if [[ "$state" == "present" ]]; then
     continue
   fi
   gh release upload latest "$asset_path" --repo "$REPOSITORY"
-done <<< "$expected_local"
+  # Refresh after each upload so a partial retry observes the exact current state.
+  load_remote_inventory "$inventory"
+done < "$expected_local"
 
-# The manifest and its sidecar are uploaded only after all package assets.
-for asset in "$manifest_path" "$manifest_path.sha256"; do
-  name="$(basename "$asset")"
-  assert_safe_asset_name "$name"
-  asset_path="$asset"
-  expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
-  expected_size="$(stat -c '%s' "$asset_path")"
-  found="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-    --jq ".[] | select(.name == \"$name\") | [.id, .size, .digest] | @tsv")
-  if [[ -n "$found" ]]; then
-    IFS=$'\t' read -r asset_id remote_size remote_digest <<< "$found"
-    if [[ "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
-      echo "Immutable rolling manifest collision for $name; refusing to replace it." >&2
-      exit 1
-    fi
+# Upload the authoritative manifest only after its package assets are present.
+for name in "$MANIFEST_NAME" "$MANIFEST_NAME.sha256"; do
+  asset_path="$ASSET_DIRECTORY/$name"
+  state="$(remote_asset_state "$inventory" "$name" "$asset_path")"
+  if [[ "$state" == "present" ]]; then
     continue
   fi
-  gh release upload latest "$asset" --repo "$REPOSITORY"
+  gh release upload latest "$asset_path" --repo "$REPOSITORY"
+  load_remote_inventory "$inventory"
 done
 
-# Re-read the Release inventory from GitHub and require every candidate asset
-# to be present with the exact byte count and SHA-256 digest before promotion.
-inventory="$tmp/remote-assets.tsv"
-gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-  --jq '.[] | [.name, (.size | tostring), (.digest // "")] | @tsv' > "$inventory"
-while IFS= read -r asset; do
-  [[ -n "$asset" ]] || continue
-  name="$asset"
-  assert_safe_asset_name "$name"
-  asset_path="$ASSET_DIRECTORY/$asset"
-  expected_sha="$(sha256sum "$asset_path" | awk '{print $1}')"
-  expected_size="$(stat -c '%s' "$asset_path")"
-  row="$(awk -F '\t' -v name="$name" '$1 == name { print; exit }' "$inventory")"
-  if [[ -z "$row" ]]; then
-    echo "GitHub Release is missing candidate asset $name." >&2
-    exit 1
-  fi
-  IFS= <<< "$row"\t' read -r remote_name remote_size remote_digest <<< "$row"
-  if [[ "$remote_name" != "$name" || "$remote_size" != "$expected_size" || "$remote_digest" != "sha256:$expected_sha" ]]; then
-    echo "GitHub Release has a digest/size mismatch for $name." >&2
-    exit 1
-  fi
-done <<< "$expected_local"
+# Independently compare every local package/checksum/manifest byte to GitHub's
+# complete paginated asset inventory. Python splits TSV rows; no shell IFS/jq
+# interpolation is used for remote filenames.
+python - "$inventory" "$ASSET_DIRECTORY" "$expected_local" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
 
-# Recheck immediately before moving the mutable ref. A newer main push makes
-# this run stale; uploaded assets remain unreferenced and are safe to retry/prune.
+inventory_path, directory_name, names_path = sys.argv[1:]
+remote = {}
+for line in Path(inventory_path).read_text(encoding="utf-8").splitlines():
+    fields = line.split("\t")
+    if len(fields) != 4:
+        raise SystemExit("GitHub returned a malformed release-asset inventory row")
+    name, size, digest, asset_id = fields
+    if name in remote:
+        raise SystemExit(f"GitHub Release contains duplicate asset name: {name}")
+    remote[name] = (size, digest, asset_id)
+
+root = Path(directory_name)
+names = [line for line in Path(names_path).read_text(encoding="utf-8").splitlines() if line]
+for name in names:
+    path = root / name
+    if path.is_symlink() or not path.is_file():
+        raise SystemExit(f"local candidate is missing or unsafe: {name}")
+    if name not in remote:
+        raise SystemExit(f"GitHub Release is missing candidate asset: {name}")
+    expected_size = str(path.stat().st_size)
+    expected_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    remote_size, remote_digest, _ = remote[name]
+    if remote_size != expected_size or remote_digest != f"sha256:{expected_digest}":
+        raise SystemExit(f"GitHub Release size/digest mismatch for {name}")
+print(f"Verified {len(names)} candidate Release assets against GitHub.")
+PY
+
+# Recheck the exact main SHA and source workflow immediately before promotion.
 assert_fresh_main
+verify_source_run
+assert_fresh_main
+
 ref_file="$tmp/latest-ref.json"
 ref_code="$(curl --silent --show-error --output "$ref_file" --write-out '%{http_code}' \
   --header "Authorization: Bearer $GH_TOKEN" \
@@ -239,7 +291,7 @@ Only assets listed in the commit-bound manifest are part of this rolling build. 
 EOF
 )"
 
-gh api --method PATCH "repos/$REPOSITORY/releases/$release_id" \
+gh api --method PATCH "repos/$REPOSITORY/releases/$RELEASE_ID" \
   -f name="$PRODUCT_PREFIX rolling development ($SOURCE_SHA)" \
   -f body="$release_body" \
   -F prerelease=true \
@@ -252,108 +304,31 @@ if [[ "$resolved_ref" != "$SOURCE_SHA" ]]; then
   exit 1
 fi
 
-# Do not prune if main advanced while the Release was being finalized. The next
-# successful run can safely remove these older assets after its own promotion.
+# Prune old assets only after the new inventory and prerelease are published.
+# If main advanced, leave older assets in place; the next successful run retries.
 assert_fresh_main
-current_names="$tmp/current-assets.txt"
-printf '%s\n' "$expected_local" > "$current_names"
-while IFS=$'\t' read -r name size digest; do
-  [[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]] || continue
-  assert_safe_asset_name "$name"
-  assert_safe_asset_name "$name"
-  if ! grep -Fxq "$name" "$current_names"; then
-    asset_id="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-      --jq ".[] | select(.name == \"$name\") | .id")"
-    if [[ "$asset_id" =~ ^[0-9]+$ ]]; then
-      gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id" >/dev/null
-    fi
-  fi
-done < "$inventory"
+current_names="$expected_local"
+python - "$inventory" "$current_names" "$PRODUCT_PREFIX" <<'PY' > "$tmp/obsolete-asset-ids.txt"
+import sys
+from pathlib import Path
 
-echo "Published verified rolling prerelease: $REPOSITORY/releases/tag/latest"
-echo "Source commit: $SOURCE_SHA"
-echo "Manifest: $MANIFEST_NAME ($manifest_sha)"
-
-# Recheck immediately before moving the mutable ref. A newer main push makes
-# this run stale; uploaded assets remain unreferenced and are safe to retry/prune.
-assert_fresh_main
-ref_file="$tmp/latest-ref.json"
-ref_code="$(curl --silent --show-error --output "$ref_file" --write-out '%{http_code}' \
-  --header "Authorization: Bearer $GH_TOKEN" \
-  --header 'Accept: application/vnd.github+json' \
-  --header 'X-GitHub-Api-Version: 2022-11-28' \
-  "https://api.github.com/repos/$REPOSITORY/git/ref/tags/latest")"
-case "$ref_code" in
-  200)
-    current_ref_sha="$(jq -r '.object.sha' "$ref_file")"
-    current_ref_type="$(jq -r '.object.type' "$ref_file")"
-    if [[ "$current_ref_sha" != "$SOURCE_SHA" || "$current_ref_type" != "commit" ]]; then
-      gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest" \
-        -f "sha=$SOURCE_SHA" -F force=true >/dev/null
-    fi
-    ;;
-  404)
-    gh api --method POST "repos/$REPOSITORY/git/refs" \
-      -f ref=refs/tags/latest -f "sha=$SOURCE_SHA" >/dev/null
-    ;;
-  *)
-    echo "Could not inspect latest Git ref (HTTP $ref_code)." >&2
-    cat "$ref_file" >&2
-    exit 1
-    ;;
-esac
-
-resolved_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest" --jq '.object.sha')"
-if [[ "$resolved_ref" != "$SOURCE_SHA" ]]; then
-  echo "latest tag did not resolve to the verified source commit." >&2
-  exit 1
-fi
-
-manifest_url="https://github.com/$REPOSITORY/releases/download/latest/$MANIFEST_NAME"
-release_body="$(cat <<EOF
-## Rolling development build
-
-- **Channel:** `latest` (prerelease)
-- **Source commit:** `$SOURCE_SHA`
-- **Verified CI run:** [$SOURCE_RUN_ID](https://github.com/$REPOSITORY/actions/runs/$SOURCE_RUN_ID)
-- **Target/profile packages:** $(jq '.target_profiles | length' "$manifest_path")
-- **Authoritative inventory:** [$MANIFEST_NAME]($manifest_url)
-- **Manifest SHA-256:** `$manifest_sha`
-
-Only assets listed in the commit-bound manifest are part of this rolling build. Older rolling assets are retained until this manifest and the `latest` ref have both been verified.
-EOF
-)"
-
-gh api --method PATCH "repos/$REPOSITORY/releases/$release_id" \
-  -f name="$PRODUCT_PREFIX rolling development ($SOURCE_SHA)" \
-  -f body="$release_body" \
-  -F prerelease=true \
-  -F draft=false > "$release_file"
-
-jq -e '(.draft == false) and (.prerelease == true) and (.tag_name == "latest")' "$release_file" >/dev/null
-resolved_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest" --jq '.object.sha')"
-if [[ "$resolved_ref" != "$SOURCE_SHA" ]]; then
-  echo "latest tag changed unexpectedly during Release publication." >&2
-  exit 1
-fi
-
-# Do not prune if main advanced while the Release was being finalized. The next
-# successful run can safely remove these older assets after its own promotion.
-assert_fresh_main
-current_names="$tmp/current-assets.txt"
-printf '%s\n' "$expected_local" > "$current_names"
-while IFS=$'\t' read -r name size digest; do
-  [[ "$name" == "rolling-$PRODUCT_PREFIX-"* ]] || continue
-  assert_safe_asset_name "$name"
-  assert_safe_asset_name "$name"
-  if ! grep -Fxq "$name" "$current_names"; then
-    asset_id="$(gh api --paginate "repos/$REPOSITORY/releases/$release_id/assets?per_page=100" \
-      --jq ".[] | select(.name == \"$name\") | .id")"
-    if [[ "$asset_id" =~ ^[0-9]+$ ]]; then
-      gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id" >/dev/null
-    fi
-  fi
-done < "$inventory"
+inventory_path, names_path, product = sys.argv[1:]
+current = set(Path(names_path).read_text(encoding="utf-8").splitlines())
+prefix = f"rolling-{product}-"
+for line in Path(inventory_path).read_text(encoding="utf-8").splitlines():
+    fields = line.split("\t")
+    if len(fields) != 4:
+        raise SystemExit("GitHub returned a malformed release-asset inventory row")
+    name, _size, _digest, asset_id = fields
+    if name.startswith(prefix) and name not in current:
+        if not asset_id.isdigit() or int(asset_id) <= 0:
+            raise SystemExit(f"invalid GitHub asset ID for {name}")
+        print(asset_id)
+PY
+while IFS= read -r asset_id; do
+  [[ -n "$asset_id" ]] || continue
+  gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id" >/dev/null
+done < "$tmp/obsolete-asset-ids.txt"
 
 echo "Published verified rolling prerelease: $REPOSITORY/releases/tag/latest"
 echo "Source commit: $SOURCE_SHA"
