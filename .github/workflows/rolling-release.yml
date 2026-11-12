@@ -1,74 +1,68 @@
-name: Rolling development GitHub Release
+name: Rolling product prerelease
 
 on:
   workflow_call:
     inputs:
       pipeline-ref:
-        description: "Immutable Pipeline revision providing the rolling artifact verifier"
+        description: "Exact Pipeline commit that implements rolling asset verification and publication"
+        required: true
+        type: string
+      repository:
+        description: "Caller repository in owner/name form"
         required: true
         type: string
       source-run-id:
-        description: "Successful upstream CDIN CI run whose product artifacts must be published"
+        description: "Successful caller workflow run whose artifacts are being promoted"
         required: true
         type: string
-      source-run-attempt:
-        description: "Exact attempt number of the successful upstream CI run"
-        required: true
-        type: string
-      source-commit:
-        description: "Exact source commit verified by the upstream CI run"
+      source-workflow-path:
+        description: "Exact caller workflow file path that produced the successful artifacts"
         required: true
         type: string
       source-branch:
-        description: "Required source branch for the rolling channel"
-        required: false
+        description: "Source branch; the product rolling channel only accepts main"
+        required: true
         type: string
-        default: main
+      source-sha:
+        description: "Exact 40-character commit SHA from the successful source run"
+        required: true
+        type: string
       artifact-pattern:
-        description: "Product distribution artifact name pattern from the upstream CI run"
+        description: "Pattern for target/profile installed-product workflow artifacts"
         required: false
         type: string
-        default: cdin-installed-product-*
+        default: "cdin-installed-product-*"
+      product-prefix:
+        description: "Safe product filename namespace, for example cdin"
+        required: true
+        type: string
+      expected-target-profiles:
+        description: "JSON array of required {target, profile} pairs"
+        required: true
+        type: string
     secrets:
       release-token:
-        description: "Optional token with Actions read and Contents write on the caller repository"
+        description: "Token permitted to create/update the fixed tag and rolling GitHub Release"
         required: false
 
 permissions:
   contents: read
+  actions: read
 
-# A single publisher per consuming repository. Never cancel an active upload:
-# the next queued invocation re-checks freshness after it acquires the group.
 concurrency:
-  group: pipeline-rolling-latest-${{ github.repository }}
+  group: rolling-product-${{ inputs.repository }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Verify and promote the latest successful product build
+    name: Verify and promote the complete rolling product set
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       actions: read
       contents: write
-    env:
-      REPOSITORY: ${{ github.repository }}
-      SOURCE_RUN_ID: ${{ inputs.source-run-id }}
-      SOURCE_RUN_ATTEMPT: ${{ inputs.source-run-attempt }}
-      SOURCE_COMMIT: ${{ inputs.source-commit }}
-      SOURCE_BRANCH: ${{ inputs.source-branch }}
-      GH_TOKEN: ${{ secrets.release-token || github.token }}
-      PYTHONPATH: .pipeline/src
     steps:
-      - name: Check out the exact verified source commit
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ inputs.source-commit }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Check out the immutable Pipeline helper
+      - name: Check out the exact shared Pipeline helper
         uses: actions/checkout@v7
         with:
           repository: m-mdy-m/pipeline
@@ -82,348 +76,117 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify the exact upstream CI run and latest-successful ordering
+      - name: Verify the source workflow run and its immutable commit identity
         id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}
+          SOURCE_BRANCH: ${{ inputs.source-branch }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$SOURCE_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
-          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$SOURCE_BRANCH" == "main" ]]
-
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
-          gh api "repos/$REPOSITORY/actions/runs?branch=$SOURCE_BRANCH&event=push&status=completed&per_page=100" > "$RUNNER_TEMP/recent-runs.json"
-
-          python - "$RUNNER_TEMP/source-run.json" "$RUNNER_TEMP/recent-runs.json" <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          source = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          recent = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-          repository = os.environ["REPOSITORY"]
-          expected = {
-              "id": int(os.environ["SOURCE_RUN_ID"]),
-              "run_attempt": int(os.environ["SOURCE_RUN_ATTEMPT"]),
-              "head_sha": os.environ["SOURCE_COMMIT"],
-              "head_branch": os.environ["SOURCE_BRANCH"],
-              "event": "push",
-              "status": "completed",
-              "conclusion": "success",
-          }
-          for key, value in expected.items():
-              if source.get(key) != value:
-                  raise SystemExit(f"upstream CI run {key} mismatch: {source.get(key)!r} != {value!r}")
-          if (source.get("head_repository") or {}).get("full_name") != repository:
-              raise SystemExit("upstream CI run did not originate from the consuming repository")
-          if source.get("name") != "CI":
-              raise SystemExit(f"unexpected upstream workflow: {source.get('name')!r}")
-
-          candidates = [
-              run for run in recent.get("workflow_runs", [])
-              if run.get("workflow_id") == source.get("workflow_id")
-              and run.get("head_branch") == expected["head_branch"]
-              and run.get("event") == "push"
-              and run.get("status") == "completed"
-              and run.get("conclusion") == "success"
-              and (run.get("head_repository") or {}).get("full_name") == repository
-          ]
-          if not candidates:
-              raise SystemExit("no successful main-branch CI run was found")
-          newest = max(
-              candidates,
-              key=lambda run: (
-                  int(run.get("run_number", 0)),
-                  int(run.get("run_attempt", 0)),
-                  str(run.get("updated_at", "")),
-                  int(run.get("id", 0)),
-              ),
-          )
-          identity = (source["id"], source["run_attempt"])
-          newest_identity = (newest["id"], newest["run_attempt"])
-          publish = identity == newest_identity
-          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              output.write(f"publish={str(publish).lower()}\n")
-              output.write(f"workflow_id={source['workflow_id']}\n")
-              output.write(f"latest_successful_run_id={newest['id']}\n")
-              output.write(f"latest_successful_run_attempt={newest['run_attempt']}\n")
-          if not publish:
-              print(f"Skipping stale run {identity}; newest successful main CI is {newest_identity}.")
-          else:
-              print(
-                  f"Verified newest successful main CI run #{source['run_number']} "
-                  f"attempt {source['run_attempt']} at {source['head_sha']}."
-              )
-          PY
-
-      - name: Check source ancestry and current latest pointer
-        id: freshness
-        if: steps.source.outputs.publish == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
-          MAIN_HEAD="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH^{commit}")"
-          OLD_LATEST_SHA=""
-          if tag_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest" 2>/dev/null)"; then
-            tag_type="$(jq -r '.object.type' <<<"$tag_ref")"
-            tag_object="$(jq -r '.object.sha' <<<"$tag_ref")"
-            if [[ "$tag_type" == "tag" ]]; then
-              OLD_LATEST_SHA="$(gh api "repos/$REPOSITORY/git/tags/$tag_object" --jq '.object.sha')"
-            else
-              OLD_LATEST_SHA="$tag_object"
-            fi
+          jq -e \
+            --arg repository "$REPOSITORY" \
+            --arg sha "$SOURCE_SHA" \
+            --arg branch "$SOURCE_BRANCH" \
+            --arg workflow "$SOURCE_WORKFLOW_PATH" \
+            '(.event == "push") and
+             (.conclusion == "success") and
+             (.path == $workflow) and
+             (.head_branch == $branch) and
+             (.head_sha == $sha) and
+             (.repository.full_name == $repository)' \
+            "$RUNNER_TEMP/source-run.json" >/dev/null
+          attempt="$(jq -r '.run_attempt' "$RUNNER_TEMP/source-run.json")"
+          [[ "$attempt" =~ ^[0-9]+$ ]]
+          printf 'run_attempt=%s\n' "$attempt" >> "$GITHUB_OUTPUT"
+          current_main="$(gh api "repos/$REPOSITORY/commits/main" --jq .sha)"
+          if [[ "$current_main" != "$SOURCE_SHA" ]]; then
+            echo "The source run is no longer the newest main commit; refusing stale promotion." >&2
+            exit 1
           fi
-          decision="$(python -m pipeline.release.rolling freshness \
-            --current-latest "$OLD_LATEST_SHA" \
-            --candidate "$SOURCE_COMMIT" \
-            --main-head "$MAIN_HEAD" \
-            --candidate-run-id "$SOURCE_RUN_ID" \
-            --candidate-run-attempt "$SOURCE_RUN_ATTEMPT" \
-            --latest-successful-run-id "${{ steps.source.outputs.latest_successful_run_id }}" \
-            --latest-successful-run-attempt "${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
-          if [[ "$decision" == "stale" ]]; then
-            echo "The successful CI run is stale relative to the latest published build; nothing will be changed."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "publish=true"
-            echo "old_latest_sha=$OLD_LATEST_SHA"
-          } >> "$GITHUB_OUTPUT"
+          echo "Verified successful main run $SOURCE_RUN_ID for $SOURCE_SHA (attempt $attempt)."
 
-      - name: Download product bundles from the exact successful CI run
-        if: steps.freshness.outputs.publish == 'true'
+      - name: Download target/profile artifacts from the verified source run
         uses: actions/download-artifact@v8
         with:
           pattern: ${{ inputs.artifact-pattern }}
-          path: rolling-download
+          path: rolling-inputs
           merge-multiple: false
-          github-token: ${{ secrets.release-token || github.token }}
-          repository: ${{ github.repository }}
+          repository: ${{ inputs.repository }}
           run-id: ${{ inputs.source-run-id }}
+          github-token: ${{ github.token }}
 
-      - name: Validate all six native product bundles and prepare release assets
-        if: steps.freshness.outputs.publish == 'true'
+      - name: Verify and prepare commit-qualified rolling assets
+        id: prepare
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          PRODUCT_PREFIX: ${{ inputs.product-prefix }}
+          EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+          PYTHONPATH: .pipeline/src
         shell: bash
         run: |
           set -euo pipefail
           python -m pipeline.release.rolling prepare \
-            --downloaded-root rolling-download \
-            --output-root rolling-assets \
-            --source-commit "$SOURCE_COMMIT" \
+            --artifact-root rolling-inputs \
+            --output-directory rolling-assets \
+            --repository "$REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
             --source-run-id "$SOURCE_RUN_ID" \
-            --source-run-attempt "$SOURCE_RUN_ATTEMPT"
-          test -s rolling-inventory.json
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --product-prefix "$PRODUCT_PREFIX" \
+            --expected-target-profiles "$EXPECTED_TARGET_PROFILES" \
+            | tee "$RUNNER_TEMP/rolling-prepare.json"
+          manifest_name="$(jq -r '.manifest_name' "$RUNNER_TEMP/rolling-prepare.json")"
+          [[ -n "$manifest_name" && "$manifest_name" != "null" ]]
+          printf 'manifest_name=%s\n' "$manifest_name" >> "$GITHUB_OUTPUT"
 
-      - name: Create a draft latest Release when none exists
-        if: steps.freshness.outputs.publish == 'true'
-        id: release
-        shell: bash
-        run: |
-          set -euo pipefail
-          if release="$(gh api "repos/$REPOSITORY/releases/tags/latest" 2>/dev/null)"; then
-            release_id="$(jq -r '.id' <<<"$release")"
-            echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
-            echo "created=false" >> "$GITHUB_OUTPUT"
-          else
-            python - <<'PY' > "$RUNNER_TEMP/create-latest-release.json"
-          import json
-          import os
-          print(json.dumps({
-              "tag_name": "latest",
-              "target_commitish": os.environ["SOURCE_COMMIT"],
-              "name": "CDIN latest development build",
-              "body": "Staging a verified development build. This draft is not a published product release.",
-              "draft": True,
-              "prerelease": True,
-              "make_latest": "false",
-          }))
-          PY
-            release="$(gh api --method POST "repos/$REPOSITORY/releases" --input "$RUNNER_TEMP/create-latest-release.json")"
-            release_id="$(jq -r '.id' <<<"$release")"
-            echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
-            echo "created=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Upload uniquely named candidate assets
-        if: steps.freshness.outputs.publish == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          assets=(rolling-assets/*)
-          (("${#assets[@]}" >= 3))
-          gh release upload latest "${assets[@]}" --clobber --repo "$REPOSITORY"
-
-      - name: Verify the complete remote asset inventory before moving latest
-        if: steps.freshness.outputs.publish == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api --paginate --slurp \
-            "repos/$REPOSITORY/releases/${{ steps.release.outputs.release_id }}/assets?per_page=100" \
-            > "$RUNNER_TEMP/remote-assets.json"
-          python -m pipeline.release.rolling verify-remote \
-            --inventory rolling-inventory.json \
-            --remote-assets "$RUNNER_TEMP/remote-assets.json"
-
-      - name: Recheck freshness, move latest and publish the verified release
-        if: steps.freshness.outputs.publish == 'true'
-        shell: bash
+      - name: Independently verify the complete candidate inventory
         env:
-          RELEASE_ID: ${{ steps.release.outputs.release_id }}
-          RELEASE_CREATED: ${{ steps.release.outputs.created }}
-          OLD_LATEST_SHA: ${{ steps.freshness.outputs.old_latest_sha }}
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+          MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
+          PYTHONPATH: .pipeline/src
         run: |
           set -euo pipefail
-          # A newer successful main CI run may finish while the candidate uploads.
-          gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run-final.json"
-          gh api "repos/$REPOSITORY/actions/runs?branch=$SOURCE_BRANCH&event=push&status=completed&per_page=100" > "$RUNNER_TEMP/recent-runs-final.json"
-          decision="$(python - "$RUNNER_TEMP/source-run-final.json" "$RUNNER_TEMP/recent-runs-final.json" <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-          source = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          recent = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-          candidates = [
-              run for run in recent.get("workflow_runs", [])
-              if run.get("workflow_id") == source.get("workflow_id")
-              and run.get("head_branch") == os.environ["SOURCE_BRANCH"]
-              and run.get("event") == "push"
-              and run.get("status") == "completed"
-              and run.get("conclusion") == "success"
-              and (run.get("head_repository") or {}).get("full_name") == os.environ["REPOSITORY"]
-          ]
-          if not candidates:
-              print("stale")
-              raise SystemExit(0)
-          newest = max(
-              candidates,
-              key=lambda run: (int(run.get("run_number", 0)), int(run.get("run_attempt", 0)),
-                               str(run.get("updated_at", "")), int(run.get("id", 0))),
-          )
-          if (newest.get("id"), newest.get("run_attempt")) != (
-              int(os.environ["SOURCE_RUN_ID"]), int(os.environ["SOURCE_RUN_ATTEMPT"])
-          ):
-              print("stale")
-              raise SystemExit(0)
-          if source.get("conclusion") != "success" or source.get("head_sha") != os.environ["SOURCE_COMMIT"]:
-              print("stale")
-              raise SystemExit(0)
-          print("publish")
-          PY
-          )"
-          if [[ "$decision" != "publish" ]]; then
-            echo "A newer successful main CI run completed during upload; preserving the current latest release."
-            exit 0
-          fi
+          python -m pipeline.release.rolling verify \
+            --output-directory rolling-assets \
+            --manifest-name "$MANIFEST_NAME" \
+            --source-sha "$SOURCE_SHA" \
+            --repository "$REPOSITORY" \
+            --expected-target-profiles "$EXPECTED_TARGET_PROFILES"
 
-          git fetch --no-tags origin "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
-          MAIN_HEAD="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH^{commit}")"
-          decision="$(python -m pipeline.release.rolling freshness \
-            --current-latest "$OLD_LATEST_SHA" \
-            --candidate "$SOURCE_COMMIT" \
-            --main-head "$MAIN_HEAD" \
-            --candidate-run-id "$SOURCE_RUN_ID" \
-            --candidate-run-attempt "$SOURCE_RUN_ATTEMPT" \
-            --latest-successful-run-id "${{ steps.source.outputs.latest_successful_run_id }}" \
-            --latest-successful-run-attempt "${{ steps.source.outputs.latest_successful_run_attempt }}" | jq -r '.decision')"
-          if [[ "$decision" == "stale" ]]; then
-            echo "A newer latest tag won the race; leaving its release untouched."
-            exit 0
-          fi
+      - name: Promote the verified rolling release with freshness and repair guards
+        env:
+          GH_TOKEN: ${{ secrets.release-token || github.token }}
+          SOURCE_RUN_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ inputs.repository }}
+          SOURCE_BRANCH: ${{ inputs.source-branch }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}
+          PRODUCT_PREFIX: ${{ inputs.product-prefix }}
+          ASSET_DIRECTORY: rolling-assets
+          MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
+          EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+          PYTHONPATH: .pipeline/src
+        run: bash .pipeline/scripts/publish_rolling_release.sh
 
-          current_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest")"
-          current_type="$(jq -r '.object.type' <<<"$current_ref")"
-          current_object="$(jq -r '.object.sha' <<<"$current_ref")"
-          if [[ "$current_type" == "tag" ]]; then
-            current_sha="$(gh api "repos/$REPOSITORY/git/tags/$current_object" --jq '.object.sha')"
-          else
-            current_sha="$current_object"
-          fi
-          if [[ "$current_sha" != "$SOURCE_COMMIT" ]]; then
-            gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest" \
-              -f "sha=$SOURCE_COMMIT" -F "force=true" >/dev/null
-          fi
-
-          python - <<'PY' > "$RUNNER_TEMP/latest-release-update.json"
-          import json
-          import os
-          from pathlib import Path
-          inventory = json.loads(Path("rolling-inventory.json").read_text(encoding="utf-8"))
-          body = "\n".join([
-              "# CDIN latest development build",
-              "",
-              f"Verified source commit: {os.environ['SOURCE_COMMIT']}",
-              f"Successful CI run: {os.environ['SOURCE_RUN_ID']} (attempt {os.environ['SOURCE_RUN_ATTEMPT']})",
-              f"Product manifest: {inventory['manifest']}",
-              f"Checksums: {inventory['checksums']}",
-              "",
-              "Rolling prerelease development build; not a stable SemVer release.",
-              "The linked manifest identifies all six native OS/profile distributions, component versions and immutable source revisions.",
-          ])
-          print(json.dumps({
-              "name": "CDIN latest development build",
-              "body": body,
-              "draft": False,
-              "prerelease": True,
-              "make_latest": "false",
-          }))
-          PY
-
-          if ! gh api --method PATCH "repos/$REPOSITORY/releases/$RELEASE_ID" \
-              --input "$RUNNER_TEMP/latest-release-update.json" >/dev/null; then
-            echo "::error title=Latest release update failed::Rolling tag was moved but GitHub Release metadata could not be promoted; restoring the previous tag/release state."
-            if [[ -n "$OLD_LATEST_SHA" ]]; then
-              gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest" \
-                -f "sha=$OLD_LATEST_SHA" -F "force=true" >/dev/null || true
-            else
-              gh api --method DELETE "repos/$REPOSITORY/git/ref/tags/latest" >/dev/null || true
-            fi
-            if [[ "$RELEASE_CREATED" == "true" ]]; then
-              gh api --method DELETE "repos/$REPOSITORY/releases/$RELEASE_ID" >/dev/null || true
-            fi
-            exit 1
-          fi
-
-          # Prune superseded rolling assets only after tag + Release metadata are live.
-          gh api --paginate --slurp \
-            "repos/$REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
-            > "$RUNNER_TEMP/post-publish-assets.json"
-          python - "$RUNNER_TEMP/post-publish-assets.json" rolling-inventory.json \
-            > "$RUNNER_TEMP/old-assets-to-prune.txt" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-          pages = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          remote = [asset for page in pages for asset in page]
-          inventory = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-          keep = {row["name"] for row in inventory["assets"]}
-          remove = [
-              asset["id"] for asset in remote
-              if asset.get("name", "").startswith(("cdin-latest-", "latest-manifest-", "SHA256SUMS-latest-"))
-              and asset.get("name") not in keep
-          ]
-          print("\n".join(str(item) for item in remove))
-          PY
-          while IFS= read -r asset_id; do
-            [[ -n "$asset_id" ]] || continue
-            gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id" >/dev/null || true
-          done < "$RUNNER_TEMP/old-assets-to-prune.txt"
-
-      - name: Report rolling release result
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## CDIN rolling latest release"
-            echo
-            echo "- Source commit: `$SOURCE_COMMIT`"
-            echo "- Source CI run: `$SOURCE_RUN_ID` (attempt `$SOURCE_RUN_ATTEMPT`)"
-            echo "- Release tag: `latest`"
-            echo "- Channel: prerelease"
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain the exact promotion inventory for audit
+        uses: actions/upload-artifact@v7
+        with:
+          name: rolling-release-inventory-${{ inputs.source-sha }}
+          path: rolling-assets/
+          if-no-files-found: error
+          retention-days: 90

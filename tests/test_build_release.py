@@ -135,6 +135,39 @@ class BuildReleaseTests(unittest.TestCase):
             self.assertFalse(target_dir.exists())
             self.assertEqual(checksum, f"{expected}  application.tar.gz\n")
 
+    def test_assemble_includes_root_metadata_alongside_target_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            target = assets / "release-build-linux-x86_64"
+            target.mkdir(parents=True)
+            (target / "frontend-core-linux.tar.gz").write_bytes(b"frontend package")
+            (target / "shared-notes.txt").write_text("target notes", encoding="utf-8")
+            (assets / "shared-notes.txt").write_text("shared notes", encoding="utf-8")
+            (assets / "SHA256SUMS.previous").write_text("stale checksums", encoding="utf-8")
+            (assets / "SHA256SUMS.sha256").write_text("stale sidecar", encoding="utf-8")
+            metadata_names = (
+                "frontend-core-1.1.1.json",
+                "frontend-tui-1.1.1.json",
+                "frontend-gui-sdl-1.1.1.json",
+            )
+            for name in metadata_names:
+                (assets / name).write_text('{"schema_version":"1.2.0"}', encoding="utf-8")
+
+            result = assemble_release_assets(assets)
+
+            self.assertEqual(result["asset_count"], 3 + len(metadata_names))
+            checksum_lines = (assets / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+            checksum_inventory = {line.split("  ", 1)[1] for line in checksum_lines}
+            self.assertIn("frontend-core-linux.tar.gz", checksum_inventory)
+            self.assertIn("linux-x86_64-shared-notes.txt", checksum_inventory)
+            self.assertIn("shared-shared-notes.txt", checksum_inventory)
+            self.assertNotIn("SHA256SUMS.previous", checksum_inventory)
+            self.assertNotIn("SHA256SUMS.sha256", checksum_inventory)
+            for name in metadata_names:
+                self.assertTrue((assets / name).is_file())
+                self.assertIn(name, checksum_inventory)
+            self.assertFalse(target.exists())
+
     def test_assemble_skips_directory_represented_by_sibling_archive(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             assets = Path(tmp) / "assets"

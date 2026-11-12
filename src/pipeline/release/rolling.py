@@ -1,36 +1,24 @@
-"""Validated rolling development-release artifact preparation.
-
-This module only prepares and verifies candidate assets. The workflow owns
-GitHub tag/release mutation and freshness/rollback orchestration.
-"""
+#!/usr/bin/env python3
+"""Prepare immutable, SHA-bound assets for a mutable rolling product release."""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import os
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-RUN_ID = re.compile(r"^[0-9]+$")
-DEFAULT_GROUPS = {
-    ("Linux", "tui"),
-    ("Linux", "gui-sdl"),
-    ("macOS", "tui"),
-    ("macOS", "gui-sdl"),
-    ("Windows", "tui"),
-    ("Windows", "gui-sdl"),
-}
-OS_NAMES = {"Linux": "linux", "macOS": "darwin", "Windows": "windows"}
+HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+PRODUCT_PROFILES = frozenset({"tui", "gui-sdl"})
+ARCHIVE_SUFFIXES = (".tar.gz", ".zip")
 
 
 class RollingReleaseError(RuntimeError):
-    """Raised when a rolling release candidate is incomplete or inconsistent."""
+    """Raised when rolling-release inputs do not form one complete verified build."""
 
 
 def sha256_file(path: Path) -> str:
@@ -41,7 +29,7 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _read_json(path: Path, label: str) -> dict[str, Any]:
+def _json_object(path: Path, label: str) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():
         raise RollingReleaseError(f"{label} is missing or unsafe: {path}")
     try:
@@ -53,388 +41,501 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def _regular_files(root: Path) -> list[Path]:
-    if root.is_symlink() or not root.is_dir():
-        raise RollingReleaseError(f"artifact group is missing or unsafe: {root}")
-    result: list[Path] = []
-    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
-        if path.is_symlink():
-            raise RollingReleaseError(f"artifact group contains a symlink: {path.relative_to(root)}")
-        if path.is_file():
-            result.append(path)
-        elif not path.is_dir():
-            raise RollingReleaseError(f"artifact group contains a special file: {path.relative_to(root)}")
+def _safe_component(value: str, label: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}", value):
+        raise RollingReleaseError(f"{label} is not a safe filename component: {value!r}")
+    return value
+
+
+def _target_id(target: Any) -> str:
+    if not isinstance(target, dict):
+        raise RollingReleaseError("package manifest has no target identity")
+    os_name = target.get("os")
+    architecture = target.get("architecture")
+    abi = target.get("abi")
+    if not all(isinstance(value, str) and value for value in (os_name, architecture, abi)):
+        raise RollingReleaseError("package manifest target must identify OS, architecture and ABI")
+    normalized_os = {"darwin": "macos"}.get(os_name, os_name)
+    if normalized_os not in {"linux", "macos", "windows"}:
+        raise RollingReleaseError(f"unsupported rolling-release target OS: {os_name}")
+    if architecture not in {"x86_64", "arm64"}:
+        raise RollingReleaseError(f"unsupported rolling-release architecture: {architecture}")
+    if normalized_os == "windows" and (architecture != "x86_64" or abi != "windows-ucrt64"):
+        raise RollingReleaseError("Windows rolling assets must use the x86_64 UCRT64 ABI")
+    return f"{normalized_os}-{architecture}"
+
+
+def _expected_pairs(value: str) -> set[tuple[str, str]]:
+    try:
+        raw = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise RollingReleaseError(f"expected target/profile matrix is invalid JSON: {error}") from error
+    if not isinstance(raw, list) or not raw:
+        raise RollingReleaseError("expected target/profile matrix must be a non-empty JSON array")
+    result: set[tuple[str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            raise RollingReleaseError("expected target/profile matrix entries must be objects")
+        target = item.get("target")
+        profile = item.get("profile")
+        if not isinstance(target, str) or not re.fullmatch(r"(linux|macos|windows)-(x86_64|arm64)", target):
+            raise RollingReleaseError(f"invalid expected native target: {target!r}")
+        if profile not in PRODUCT_PROFILES:
+            raise RollingReleaseError(f"invalid expected product profile: {profile!r}")
+        pair = (target, profile)
+        if pair in result:
+            raise RollingReleaseError(f"duplicate expected target/profile: {target}/{profile}")
+        result.add(pair)
     return result
 
 
-def _check_checksum_sidecar(sidecar: Path, archive: Path, expected: str) -> None:
-    try:
-        actual = sidecar.read_text(encoding="ascii")
-    except (OSError, UnicodeError) as error:
-        raise RollingReleaseError(f"cannot read checksum sidecar {sidecar.name}: {error}") from error
-    required = f"{expected}  {archive.name}\n"
-    if actual != required:
-        raise RollingReleaseError(f"checksum sidecar mismatch for {archive.name}")
-
-
-def _validate_group(
-    group_path: Path,
-    *,
-    runner_os: str,
-    profile: str,
-    source_commit: str,
-    source_run_id: str,
-    source_run_attempt: str,
-) -> dict[str, Any]:
-    files = _regular_files(group_path)
-    archives = [path for path in files if path.name.endswith((".tar.gz", ".zip"))]
-    sidecars = [path for path in files if path.name.endswith((".tar.gz.sha256", ".zip.sha256"))]
-    manifests = [path for path in files if path.name.endswith(".manifest.json")]
-    if len(archives) != 1 or len(sidecars) != 1 or len(manifests) != 1 or len(files) != 3:
+def _artifact_files(directory: Path) -> tuple[Path, Path, Path]:
+    if directory.is_symlink() or not directory.is_dir():
+        raise RollingReleaseError(f"artifact directory is missing or unsafe: {directory}")
+    entries = sorted(directory.iterdir(), key=lambda path: path.name)
+    if any(path.is_symlink() or not path.is_file() for path in entries):
+        raise RollingReleaseError(f"artifact contains a symlink, directory or special file: {directory}")
+    archives = [path for path in entries if path.name.endswith(ARCHIVE_SUFFIXES)]
+    checksums = [path for path in entries if path.name.endswith(".sha256")]
+    manifests = [path for path in entries if path.name.endswith(".manifest.json")]
+    if len(entries) != 3 or len(archives) != 1 or len(checksums) != 1 or len(manifests) != 1:
         raise RollingReleaseError(
-            f"{group_path.name} must contain exactly one archive, one .sha256 sidecar "
-            "and one .manifest.json"
+            f"artifact {directory.name} must contain exactly one archive, checksum and package manifest"
         )
-    archive, sidecar, manifest_path = archives[0], sidecars[0], manifests[0]
-    expected_extension = ".zip" if runner_os == "Windows" else ".tar.gz"
-    if not archive.name.endswith(expected_extension):
-        raise RollingReleaseError(
-            f"{runner_os} {profile} archive must use {expected_extension}: {archive.name}"
-        )
-    manifest = _read_json(manifest_path, "distribution manifest")
-    if manifest.get("product") != "com.cdin.editor" or manifest.get("schema_version") != 1:
-        raise RollingReleaseError(f"unsupported distribution manifest: {manifest_path.name}")
-    if manifest.get("source_commit") != source_commit:
-        raise RollingReleaseError(f"source commit mismatch in {manifest_path.name}")
-    if manifest.get("profile") != profile:
-        raise RollingReleaseError(f"profile mismatch in {manifest_path.name}")
-    workflow = manifest.get("workflow")
-    if (
-        not isinstance(workflow, dict)
-        or str(workflow.get("run_id", "")) != source_run_id
-        or str(workflow.get("run_attempt", "")) != source_run_attempt
-    ):
-        raise RollingReleaseError(f"source workflow run identity mismatch in {manifest_path.name}")
-    target = manifest.get("target")
-    if not isinstance(target, dict) or target.get("os") != OS_NAMES[runner_os]:
-        raise RollingReleaseError(f"target OS mismatch in {manifest_path.name}")
-    if target.get("architecture") not in {"x86_64", "arm64"} or not isinstance(target.get("abi"), str):
-        raise RollingReleaseError(f"target ABI/architecture missing in {manifest_path.name}")
-    archive_info = manifest.get("archive")
-    if not isinstance(archive_info, dict):
-        raise RollingReleaseError(f"archive record missing in {manifest_path.name}")
-    expected_digest = archive_info.get("sha256")
-    expected_size = archive_info.get("size_bytes")
-    if archive_info.get("name") != archive.name:
-        raise RollingReleaseError(f"archive filename mismatch in {manifest_path.name}")
-    if not isinstance(expected_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
-        raise RollingReleaseError(f"archive SHA-256 missing in {manifest_path.name}")
-    if not isinstance(expected_size, int) or expected_size <= 0 or archive.stat().st_size != expected_size:
-        raise RollingReleaseError(f"archive byte size mismatch in {manifest_path.name}")
-    actual_digest = sha256_file(archive)
-    if actual_digest != expected_digest:
-        raise RollingReleaseError(f"archive SHA-256 mismatch in {manifest_path.name}")
-    _check_checksum_sidecar(sidecar, archive, expected_digest)
-    registry_digest = manifest.get("registry_manifest_sha256")
-    if not isinstance(registry_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", registry_digest):
-        raise RollingReleaseError(f"Registry Manifest SHA-256 missing in {manifest_path.name}")
-    components = manifest.get("components")
-    if not isinstance(components, list) or not components:
-        raise RollingReleaseError(f"selected component inventory missing in {manifest_path.name}")
-    return {
-        "runner_os": runner_os,
-        "profile": profile,
-        "target": target,
-        "version": manifest.get("version"),
-        "archive_path": archive,
-        "archive_sha256": expected_digest,
-        "archive_size_bytes": expected_size,
-        "registry_manifest_sha256": registry_digest,
-        "components": components,
-        "source_commit": source_commit,
-        "source_run_id": source_run_id,
-        "source_run_attempt": workflow.get("run_attempt"),
-    }
-
-
-def _atomic_json(path: Path, value: dict[str, Any]) -> None:
-    payload = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    temporary = path.with_name(path.name + ".tmp")
-    if temporary.exists() or temporary.is_symlink():
-        raise RollingReleaseError(f"temporary output already exists: {temporary}")
-    try:
-        temporary.write_bytes(payload)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    archive, checksum, manifest = archives[0], checksums[0], manifests[0]
+    if checksum.name != archive.name + ".sha256":
+        raise RollingReleaseError(f"checksum sidecar does not match archive name in {directory.name}")
+    return archive, checksum, manifest
 
 
 def prepare_rolling_assets(
     *,
-    downloaded_root: Path,
-    output_root: Path,
-    source_commit: str,
+    artifact_root: str | Path,
+    output_directory: str | Path,
+    repository: str,
+    source_sha: str,
     source_run_id: str,
     source_run_attempt: str,
-    expected_groups: Iterable[tuple[str, str]] = DEFAULT_GROUPS,
+    product_prefix: str,
+    expected_target_profiles: str,
 ) -> dict[str, Any]:
-    """Validate all expected CI artifacts and build uniquely named latest assets."""
-    source_commit = source_commit.lower()
-    if not FULL_SHA.fullmatch(source_commit):
-        raise RollingReleaseError("source commit must be a full 40-character SHA")
-    if not RUN_ID.fullmatch(source_run_id) or not RUN_ID.fullmatch(source_run_attempt):
-        raise RollingReleaseError("source workflow run ID and attempt must be decimal integers")
-    if downloaded_root.is_symlink() or not downloaded_root.is_dir():
-        raise RollingReleaseError(f"downloaded artifacts are missing or unsafe: {downloaded_root}")
-    if output_root.exists() or output_root.is_symlink():
-        raise RollingReleaseError(f"rolling asset output already exists: {output_root}")
-    output_root.mkdir(parents=True)
-    expected = set(expected_groups)
-    if expected != DEFAULT_GROUPS:
-        if not expected or any((os_name not in OS_NAMES or profile not in {"tui", "gui-sdl"}) for os_name, profile in expected):
-            raise RollingReleaseError("expected artifact groups contain an unsupported OS/profile")
-    groups: dict[tuple[str, str], Path] = {}
-    for path in sorted(downloaded_root.iterdir(), key=lambda item: item.name):
-        if path.is_symlink() or not path.is_dir():
-            raise RollingReleaseError(f"unexpected downloaded artifact entry: {path.name}")
-        prefix = "cdin-installed-product-"
-        if not path.name.startswith(prefix):
-            raise RollingReleaseError(f"unexpected downloaded artifact name: {path.name}")
-        label = path.name[len(prefix):]
-        matched = [(os_name, profile) for os_name, profile in expected if label == f"{os_name}-{profile}"]
-        if len(matched) != 1:
-            raise RollingReleaseError(f"unexpected or duplicate product artifact group: {path.name}")
-        groups[matched[0]] = path
-    missing = sorted(expected - set(groups))
-    if missing:
-        raise RollingReleaseError(f"product matrix is incomplete; missing groups: {missing}")
+    """Verify every downloaded target artifact and create commit-qualified assets."""
+    if not FULL_SHA.fullmatch(source_sha):
+        raise RollingReleaseError("source SHA must be a full lowercase 40-character commit SHA")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise RollingReleaseError("repository must use owner/name form")
+    if (
+        not source_run_id.isdigit()
+        or int(source_run_id) <= 0
+        or not source_run_attempt.isdigit()
+        or int(source_run_attempt) <= 0
+    ):
+        raise RollingReleaseError("workflow run ID and attempt must be positive decimal integers")
+    product = _safe_component(product_prefix, "product prefix")
+    expected = _expected_pairs(expected_target_profiles)
+    root = Path(artifact_root)
+    output = Path(output_directory)
+    if root.is_symlink() or not root.is_dir():
+        raise RollingReleaseError(f"downloaded artifact root is missing or unsafe: {root}")
+    if output.exists() or output.is_symlink():
+        if output.is_symlink() or not output.is_dir() or any(output.iterdir()):
+            raise RollingReleaseError(f"rolling output directory must be empty: {output}")
+    else:
+        output.mkdir(parents=True, exist_ok=False)
 
-    short_sha = source_commit[:12]
-    artifact_rows: list[dict[str, Any]] = []
-    asset_rows: list[dict[str, Any]] = []
-    for runner_os, profile in sorted(expected):
-        record = _validate_group(
-            groups[(runner_os, profile)],
-            runner_os=runner_os,
-            profile=profile,
-            source_commit=source_commit,
-            source_run_id=source_run_id,
-            source_run_attempt=source_run_attempt,
+    artifact_directories = sorted(root.iterdir(), key=lambda path: path.name)
+    if len(artifact_directories) != len(expected):
+        raise RollingReleaseError(
+            f"expected {len(expected)} downloaded artifacts, found {len(artifact_directories)}"
         )
-        target = record["target"]
-        slug = f"{target['os']}-{target['architecture']}-{profile}"
-        suffix = ".zip" if target["os"] == "windows" else ".tar.gz"
-        archive_name = f"cdin-latest-{slug}-{short_sha}-{source_run_id}{suffix}"
-        archive_destination = output_root / archive_name
-        shutil.copyfile(record["archive_path"], archive_destination)
-        archive_digest = sha256_file(archive_destination)
-        sidecar_name = archive_name + ".sha256"
-        (output_root / sidecar_name).write_text(
-            f"{archive_digest}  {archive_name}\n", encoding="ascii"
-        )
-        artifact_rows.append({
-            "runner_os": runner_os,
-            "target": target,
+
+    seen: set[tuple[str, str]] = set()
+    packages: list[dict[str, Any]] = []
+    assets: list[dict[str, Any]] = []
+    for directory in artifact_directories:
+        archive, checksum, package_manifest_path = _artifact_files(directory)
+        package_manifest = _json_object(package_manifest_path, "installed package manifest")
+        package_sha = package_manifest.get("source_commit")
+        target = package_manifest.get("target")
+        target_id = _target_id(target)
+        profile = package_manifest.get("profile")
+        if profile not in PRODUCT_PROFILES:
+            raise RollingReleaseError(f"unsupported package profile in {directory.name}: {profile!r}")
+        pair = (target_id, profile)
+        if pair not in expected:
+            raise RollingReleaseError(f"unexpected target/profile artifact: {target_id}/{profile}")
+        if pair in seen:
+            raise RollingReleaseError(f"duplicate target/profile artifact: {target_id}/{profile}")
+        seen.add(pair)
+        if package_sha != source_sha:
+            raise RollingReleaseError(
+                f"{directory.name} was built from {package_sha!r}, expected {source_sha}"
+            )
+
+        archive_metadata = package_manifest.get("archive")
+        if not isinstance(archive_metadata, dict):
+            raise RollingReleaseError(f"{directory.name} package manifest has no archive object")
+        digest = archive_metadata.get("sha256")
+        size = archive_metadata.get("size_bytes")
+        if (
+            archive_metadata.get("name") != archive.name
+            or not isinstance(digest, str)
+            or not HEX_SHA256.fullmatch(digest)
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size <= 0
+        ):
+            raise RollingReleaseError(f"{directory.name} package archive identity is incomplete")
+        actual_size = archive.stat().st_size
+        actual_digest = sha256_file(archive)
+        if actual_size != size or actual_digest != digest:
+            raise RollingReleaseError(f"{directory.name} archive size/digest does not match its manifest")
+        try:
+            sidecar = checksum.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError) as error:
+            raise RollingReleaseError(f"cannot read {checksum.name}: {error}") from error
+        if sidecar != f"{digest}  {archive.name}":
+            raise RollingReleaseError(f"{directory.name} checksum sidecar does not match its archive")
+
+        version = package_manifest.get("version")
+        if not isinstance(version, str) or not version:
+            raise RollingReleaseError(f"{directory.name} package manifest has no product version")
+        version_component = _safe_component(version, "product version")
+        stem = f"rolling-{product}-{version_component}-{target_id}-{profile}-{source_sha}"
+        archive_name = stem + (".zip" if archive.name.endswith(".zip") else ".tar.gz")
+        checksum_name = archive_name + ".sha256"
+        manifest_name = stem + ".manifest.json"
+
+        updated_manifest = dict(package_manifest)
+        updated_archive = dict(archive_metadata)
+        updated_archive["name"] = archive_name
+        updated_manifest["archive"] = updated_archive
+        manifest_bytes = (json.dumps(updated_manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+        archive_destination = output / archive_name
+        checksum_destination = output / checksum_name
+        manifest_destination = output / manifest_name
+        for source, destination in (
+            (archive, archive_destination),
+            (checksum, checksum_destination),
+            (package_manifest_path, manifest_destination),
+        ):
+            if destination.exists() or destination.is_symlink():
+                raise RollingReleaseError(f"duplicate rolling asset destination: {destination.name}")
+        shutil.copyfile(archive, archive_destination)
+        checksum_destination.write_text(f"{digest}  {archive_name}\n", encoding="ascii")
+        manifest_destination.write_bytes(manifest_bytes)
+
+        for path, kind in (
+            (archive_destination, "application-archive"),
+            (checksum_destination, "sha256-checksum"),
+            (manifest_destination, "package-manifest"),
+        ):
+            assets.append({
+                "name": path.name,
+                "kind": kind,
+                "target": target_id,
+                "profile": profile,
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            })
+
+        registry_digest = package_manifest.get("registry_manifest_sha256")
+        packages.append({
+            "target": target_id,
+            "target_identity": target,
             "profile": profile,
-            "product_version": record["version"],
-            "archive": archive_name,
-            "size_bytes": archive_destination.stat().st_size,
-            "sha256": archive_digest,
-            "registry_manifest_sha256": record["registry_manifest_sha256"],
-            "components": record["components"],
+            "product_version": version,
+            "registry_version": package_manifest.get("registry_version"),
+            "registry_manifest_sha256": registry_digest,
+            "archive": {
+                "name": archive_name,
+                "size_bytes": actual_size,
+                "sha256": actual_digest,
+            },
+            "checksum": checksum_name,
+            "package_manifest": manifest_name,
+            "components": package_manifest.get("components", []),
+            "environment_contracts": package_manifest.get("environment_contracts", []),
+            "build_dependencies": package_manifest.get("build_dependencies", {}),
         })
-        asset_rows.extend([
-            {"name": archive_name, "size": archive_destination.stat().st_size, "sha256": archive_digest},
-            {"name": sidecar_name, "size": (output_root / sidecar_name).stat().st_size,
-             "sha256": sha256_file(output_root / sidecar_name)},
-        ])
 
-    manifest_name = f"latest-manifest-{short_sha}-{source_run_id}.json"
+    missing = expected - seen
+    if missing:
+        formatted = ", ".join(f"{target}/{profile}" for target, profile in sorted(missing))
+        raise RollingReleaseError(f"rolling build is missing required target/profile artifacts: {formatted}")
+
+    manifest_name = f"rolling-{product}-latest-manifest-{source_sha}.json"
     manifest = {
         "schema_version": 1,
-        "product": "com.cdin.editor",
         "channel": "latest",
         "prerelease": True,
-        "status": "development",
-        "source_commit": source_commit,
-        "source_run": {
-            "id": source_run_id,
-            "attempt": source_run_attempt,
-            "workflow": "CI",
-            "branch": "main",
+        "product": product,
+        "repository": repository,
+        "source_commit": source_sha,
+        "workflow_run": {
+            "id": int(source_run_id),
+            "attempt": int(source_run_attempt),
         },
-        "artifacts": artifact_rows,
+        "target_profiles": [
+            {"target": target, "profile": profile}
+            for target, profile in sorted(expected)
+        ],
+        "packages": sorted(packages, key=lambda item: (item["target"], item["profile"])),
+        "assets": sorted(assets, key=lambda item: item["name"]),
     }
-    manifest_path = output_root / manifest_name
-    _atomic_json(manifest_path, manifest)
-    asset_rows.append({
-        "name": manifest_name, "size": manifest_path.stat().st_size,
-        "sha256": sha256_file(manifest_path),
-    })
-    sums_name = f"SHA256SUMS-latest-{short_sha}-{source_run_id}.txt"
-    sums_path = output_root / sums_name
-    with sums_path.open("w", encoding="ascii", newline="\n") as stream:
-        for item in sorted(asset_rows, key=lambda row: row["name"]):
-            stream.write(f"{item['sha256']}  {item['name']}\n")
-    asset_rows.append({
-        "name": sums_name, "size": sums_path.stat().st_size,
-        "sha256": sha256_file(sums_path),
-    })
-    inventory = {
-        "schema_version": 1,
-        "source_commit": source_commit,
-        "source_run_id": source_run_id,
-        "assets": sorted(asset_rows, key=lambda row: row["name"]),
-        "manifest": manifest_name,
-        "checksums": sums_name,
+    manifest_path = output / manifest_name
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    manifest_digest = sha256_file(manifest_path)
+    sidecar_path = output / (manifest_name + ".sha256")
+    sidecar_path.write_text(f"{manifest_digest}  {manifest_name}\n", encoding="ascii")
+    # The manifest cannot contain its own digest without a recursive identity.
+    # The immutable checksum sidecar and workflow output carry that identity.
+    return {
+        "manifest": str(manifest_path),
+        "manifest_name": manifest_name,
+        "manifest_sha256": manifest_digest,
+        "manifest_size_bytes": manifest_path.stat().st_size,
+        "manifest_checksum": str(sidecar_path),
+        "source_commit": source_sha,
+        "repository": repository,
+        "asset_count": len(assets) + 2,
+        "assets": sorted(assets, key=lambda item: item["name"]),
+        "packages": sorted(packages, key=lambda item: (item["target"], item["profile"])),
+        "output_directory": str(output),
     }
-    inventory_path = output_root.parent / "rolling-inventory.json"
-    _atomic_json(inventory_path, inventory)
-    return inventory
 
 
-def verify_remote_assets(
-    inventory: dict[str, Any],
-    remote_assets: Iterable[dict[str, Any]],
-) -> None:
-    """Require every candidate asset to exist remotely with exact digest and size."""
-    expected = {
-        item["name"]: item
-        for item in inventory.get("assets", [])
-        if isinstance(item, dict) and isinstance(item.get("name"), str)
-    }
-    if not expected:
-        raise RollingReleaseError("candidate asset inventory is empty")
-    actual = {
-        item.get("name"): item
-        for item in remote_assets
-        if isinstance(item, dict) and isinstance(item.get("name"), str)
-    }
-    missing = sorted(set(expected) - set(actual))
-    if missing:
-        raise RollingReleaseError(f"uploaded rolling assets are missing: {missing}")
-    for name, expected_item in expected.items():
-        remote = actual[name]
-        digest = remote.get("digest")
-        if digest != f"sha256:{expected_item['sha256']}" or remote.get("size") != expected_item["size"]:
-            raise RollingReleaseError(f"remote asset digest/size mismatch: {name}")
-
-
-def latest_action(
+def verify_rolling_assets(
     *,
-    current_latest: str | None,
-    candidate: str,
-    main_head: str,
-    candidate_run_id: str,
-    candidate_run_attempt: str,
-    latest_successful_run_id: str,
-    latest_successful_run_attempt: str,
-    is_ancestor: Callable[[str, str], bool],
-) -> str:
-    """Decide whether a successful CI run may advance the rolling channel.
-
-    A completed older run may not publish after a newer successful main-branch
-    CI run, even when its commit is still an ancestor of main.
-    """
-    if not FULL_SHA.fullmatch(candidate) or not FULL_SHA.fullmatch(main_head):
-        raise RollingReleaseError("candidate and main head must be full commit SHAs")
-    if not is_ancestor(candidate, main_head):
-        raise RollingReleaseError("candidate commit is not an ancestor of current main")
-    if not RUN_ID.fullmatch(candidate_run_id) or not RUN_ID.fullmatch(latest_successful_run_id):
-        raise RollingReleaseError("workflow run IDs must be decimal integers")
-    if not RUN_ID.fullmatch(candidate_run_attempt) or not RUN_ID.fullmatch(latest_successful_run_attempt):
-        raise RollingReleaseError("workflow run attempts must be decimal integers")
-    if (candidate_run_id, candidate_run_attempt) != (
-        latest_successful_run_id, latest_successful_run_attempt
+    output_directory: str | Path,
+    manifest_name: str,
+    source_sha: str,
+    repository: str,
+    expected_target_profiles: str,
+) -> dict[str, Any]:
+    """Recheck the complete local publication bundle immediately before upload."""
+    if not FULL_SHA.fullmatch(source_sha):
+        raise RollingReleaseError("source SHA must be a full lowercase 40-character commit SHA")
+    if (
+        not isinstance(manifest_name, str)
+        or Path(manifest_name).name != manifest_name
+        or manifest_name in {"", ".", ".."}
     ):
-        return "stale"
-    if current_latest is None:
-        return "publish"
-    if not FULL_SHA.fullmatch(current_latest):
-        raise RollingReleaseError("current latest tag does not resolve to a full commit SHA")
-    if candidate == current_latest:
-        return "already-current"
-    if is_ancestor(candidate, current_latest):
-        return "stale"
-    if is_ancestor(current_latest, candidate):
-        return "publish"
-    raise RollingReleaseError("candidate and current latest are not on the same mainline")
+        raise RollingReleaseError("rolling release manifest filename is unsafe")
+    root = Path(output_directory)
+    if root.is_symlink() or not root.is_dir():
+        raise RollingReleaseError("rolling release output directory is missing or unsafe")
+    manifest_path = root / manifest_name
+    manifest = _json_object(manifest_path, "rolling release manifest")
+    if (
+        manifest.get("channel") != "latest"
+        or manifest.get("prerelease") is not True
+        or manifest.get("source_commit") != source_sha
+        or manifest.get("repository") != repository
+    ):
+        raise RollingReleaseError("rolling release manifest identity does not match this promotion")
 
+    expected = _expected_pairs(expected_target_profiles)
+    target_profiles = manifest.get("target_profiles")
+    if (
+        not isinstance(target_profiles, list)
+        or any(not isinstance(item, dict) for item in target_profiles)
+    ):
+        raise RollingReleaseError("rolling release target/profile declarations are malformed")
+    declared_pairs = [
+        (item.get("target"), item.get("profile"))
+        for item in target_profiles
+    ]
+    if len(declared_pairs) != len(expected) or set(declared_pairs) != expected:
+        raise RollingReleaseError("rolling release manifest target/profile inventory is incomplete, duplicated or unexpected")
 
-def _load_remote_assets(path: Path) -> list[dict[str, Any]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if isinstance(payload, list):
-        if all(isinstance(page, list) for page in payload):
-            return [item for page in payload for item in page]
-        if all(isinstance(item, dict) for item in payload):
-            return payload
-    if isinstance(payload, dict) and isinstance(payload.get("assets"), list):
-        return payload["assets"]
-    raise RollingReleaseError("remote asset JSON must be an array or a paginated array")
+    packages = manifest.get("packages")
+    if not isinstance(packages, list) or any(not isinstance(item, dict) for item in packages):
+        raise RollingReleaseError("rolling release package inventory is malformed")
+    package_pairs = [
+        (item.get("target"), item.get("profile"))
+        for item in packages
+    ]
+    if len(package_pairs) != len(expected) or set(package_pairs) != expected:
+        raise RollingReleaseError("rolling release package inventory is incomplete, duplicated or unexpected")
+
+    records = manifest.get("assets")
+    if not isinstance(records, list) or not records:
+        raise RollingReleaseError("rolling release manifest has no asset inventory")
+    seen: set[str] = set()
+    kinds_by_pair: dict[tuple[str, str], set[str]] = {}
+    records_by_name: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise RollingReleaseError("rolling release manifest contains an invalid asset record")
+        name = record.get("name")
+        digest = record.get("sha256")
+        size = record.get("size_bytes")
+        target = record.get("target")
+        profile = record.get("profile")
+        kind = record.get("kind")
+        pair = (target, profile)
+        if (
+            not isinstance(name, str)
+            or Path(name).name != name
+            or name in {"", ".", ".."}
+            or not isinstance(digest, str)
+            or not HEX_SHA256.fullmatch(digest)
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size <= 0
+            or name in seen
+            or pair not in expected
+            or kind not in {"application-archive", "sha256-checksum", "package-manifest"}
+        ):
+            raise RollingReleaseError("rolling release manifest contains an unsafe or duplicate asset")
+        seen.add(name)
+        kinds = kinds_by_pair.setdefault(pair, set())
+        if kind in kinds:
+            raise RollingReleaseError(f"duplicate asset kind for {target}/{profile}: {kind}")
+        kinds.add(kind)
+        records_by_name[name] = record
+        path = root / name
+        if path.is_symlink() or not path.is_file():
+            raise RollingReleaseError(f"rolling release asset is missing or unsafe: {name}")
+        if path.stat().st_size != size or sha256_file(path) != digest:
+            raise RollingReleaseError(f"rolling release asset digest/size mismatch: {name}")
+
+    required_kinds = {
+        "application-archive",
+        "sha256-checksum",
+        "package-manifest",
+    }
+    for pair in expected:
+        if kinds_by_pair.get(pair) != required_kinds:
+            raise RollingReleaseError(
+                f"rolling release asset kinds are incomplete for {pair[0]}/{pair[1]}"
+            )
+
+    for package in packages:
+        target, profile = package["target"], package["profile"]
+        archive = package.get("archive")
+        if not isinstance(archive, dict):
+            raise RollingReleaseError(f"package inventory is missing archive identity for {target}/{profile}")
+        archive_record = records_by_name.get(archive.get("name"))
+        checksum_record = records_by_name.get(package.get("checksum"))
+        manifest_record = records_by_name.get(package.get("package_manifest"))
+        if (
+            archive_record is None
+            or checksum_record is None
+            or manifest_record is None
+            or archive_record.get("kind") != "application-archive"
+            or checksum_record.get("kind") != "sha256-checksum"
+            or manifest_record.get("kind") != "package-manifest"
+            or any(
+                (row.get("target"), row.get("profile")) != (target, profile)
+                for row in (archive_record, checksum_record, manifest_record)
+            )
+            or archive_record.get("sha256") != archive.get("sha256")
+            or archive_record.get("size_bytes") != archive.get("size_bytes")
+        ):
+            raise RollingReleaseError(
+                f"package/asset inventory references do not agree for {target}/{profile}"
+            )
+
+        archive_path = root / archive_record["name"]
+        checksum_asset_path = root / checksum_record["name"]
+        package_manifest_path = root / manifest_record["name"]
+        checksum_content = checksum_asset_path.read_text(encoding="ascii").strip()
+        if checksum_content != f'{archive["sha256"]}  {archive["name"]}':
+            raise RollingReleaseError(
+                f"package archive checksum sidecar is inconsistent for {target}/{profile}"
+            )
+        package_manifest = _json_object(package_manifest_path, "rolling package manifest")
+        if (
+            package_manifest.get("source_commit") != source_sha
+            or package_manifest.get("profile") != profile
+            or _target_id(package_manifest.get("target")) != target
+            or package_manifest.get("version") != package.get("product_version")
+        ):
+            raise RollingReleaseError(
+                f"package manifest provenance/target/profile mismatch for {target}/{profile}"
+            )
+        package_archive = package_manifest.get("archive")
+        if (
+            not isinstance(package_archive, dict)
+            or package_archive.get("name") != archive["name"]
+            or package_archive.get("sha256") != archive["sha256"]
+            or package_archive.get("size_bytes") != archive["size_bytes"]
+            or archive_path.stat().st_size != archive["size_bytes"]
+        ):
+            raise RollingReleaseError(
+                f"package manifest archive identity mismatch for {target}/{profile}"
+            )
+
+    checksum_path = root / (manifest_name + ".sha256")
+    expected_manifest_digest = sha256_file(manifest_path)
+    if checksum_path.is_symlink() or not checksum_path.is_file():
+        raise RollingReleaseError("rolling release manifest checksum is missing or unsafe")
+    if checksum_path.read_text(encoding="ascii").strip() != f"{expected_manifest_digest}  {manifest_name}":
+        raise RollingReleaseError("rolling release manifest checksum does not match its bytes")
+
+    expected_files = seen | {manifest_name, manifest_name + ".sha256"}
+    entries = list(root.iterdir())
+    if any(path.is_symlink() or not path.is_file() for path in entries):
+        raise RollingReleaseError("rolling output contains a symlink, directory or special file")
+    actual_files = {path.name for path in entries}
+    if actual_files != expected_files:
+        raise RollingReleaseError(
+            f"rolling output contains untracked or missing files: expected={sorted(expected_files)}, actual={sorted(actual_files)}"
+        )
+    return {
+        "source_commit": source_sha,
+        "asset_count": len(actual_files),
+        "manifest_sha256": expected_manifest_digest,
+        "asset_names": sorted(actual_files),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
-    prepare = sub.add_parser("prepare", help="validate the successful CI run artifacts")
-    prepare.add_argument("--downloaded-root", type=Path, required=True)
-    prepare.add_argument("--output-root", type=Path, required=True)
-    prepare.add_argument("--source-commit", required=True)
-    prepare.add_argument("--source-run-id", required=True)
-    prepare.add_argument("--source-run-attempt", required=True)
-    verify = sub.add_parser("verify-remote", help="verify GitHub's published asset inventory")
-    verify.add_argument("--inventory", type=Path, required=True)
-    verify.add_argument("--remote-assets", type=Path, required=True)
-    freshness = sub.add_parser("freshness", help="prevent stale successful CI runs from moving latest")
-    freshness.add_argument("--current-latest", default="")
-    freshness.add_argument("--candidate", required=True)
-    freshness.add_argument("--main-head", required=True)
-    freshness.add_argument("--candidate-run-id", required=True)
-    freshness.add_argument("--candidate-run-attempt", required=True)
-    freshness.add_argument("--latest-successful-run-id", required=True)
-    freshness.add_argument("--latest-successful-run-attempt", required=True)
+    commands = parser.add_subparsers(dest="command", required=True)
+    prepare = commands.add_parser("prepare", help="verify downloaded target artifacts and prepare rolling assets")
+    for name, required in (
+        ("artifact-root", True),
+        ("output-directory", True),
+        ("repository", True),
+        ("source-sha", True),
+        ("source-run-id", True),
+        ("source-run-attempt", True),
+        ("product-prefix", True),
+        ("expected-target-profiles", True),
+    ):
+        prepare.add_argument(f"--{name}", required=required)
+    verify = commands.add_parser("verify", help="verify the prepared rolling publication bundle")
+    for name in ("output-directory", "manifest-name", "source-sha", "repository", "expected-target-profiles"):
+        verify.add_argument(f"--{name}", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
             result = prepare_rolling_assets(
-                downloaded_root=args.downloaded_root,
-                output_root=args.output_root,
-                source_commit=args.source_commit,
+                artifact_root=args.artifact_root,
+                output_directory=args.output_directory,
+                repository=args.repository,
+                source_sha=args.source_sha,
                 source_run_id=args.source_run_id,
                 source_run_attempt=args.source_run_attempt,
+                product_prefix=args.product_prefix,
+                expected_target_profiles=args.expected_target_profiles,
             )
-            print(json.dumps(result, indent=2, sort_keys=True))
-        elif args.command == "verify-remote":
-            inventory = _read_json(args.inventory, "rolling inventory")
-            remote = _load_remote_assets(args.remote_assets)
-            verify_remote_assets(inventory, remote)
-            print(f"Verified {len(inventory['assets'])} uploaded rolling assets.")
         else:
-            def is_ancestor(parent: str, child: str) -> bool:
-                result = subprocess.run(
-                    ["git", "merge-base", "--is-ancestor", parent, child],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode not in (0, 1):
-                    raise RollingReleaseError(result.stderr.strip() or "git merge-base failed")
-                return result.returncode == 0
-
-            decision = latest_action(
-                current_latest=args.current_latest or None,
-                candidate=args.candidate,
-                main_head=args.main_head,
-                candidate_run_id=args.candidate_run_id,
-                candidate_run_attempt=args.candidate_run_attempt,
-                latest_successful_run_id=args.latest_successful_run_id,
-                latest_successful_run_attempt=args.latest_successful_run_attempt,
-                is_ancestor=is_ancestor,
+            result = verify_rolling_assets(
+                output_directory=args.output_directory,
+                manifest_name=args.manifest_name,
+                source_sha=args.source_sha,
+                repository=args.repository,
+                expected_target_profiles=args.expected_target_profiles,
             )
-            print(json.dumps({"decision": decision}, sort_keys=True))
-    except (OSError, ValueError, RollingReleaseError, KeyError) as error:
-        print(f"rolling release: {error}", file=sys.stderr)
+    except (RollingReleaseError, OSError, ValueError) as error:
+        print(f"rolling release preparation failed: {error}", file=sys.stderr)
         return 1
+    print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 

@@ -2,232 +2,261 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-
-from pipeline.release.rolling import (  # noqa: E402
+from pipeline.release.rolling import (
     RollingReleaseError,
-    latest_action,
     prepare_rolling_assets,
-    verify_remote_assets,
+    verify_rolling_assets,
 )
 
 
 SOURCE_SHA = "a" * 40
-RUN_ID = "43170000001"
-RUN_ATTEMPT = "1"
-
-
-def write_group(root: Path, runner_os: str, profile: str) -> None:
-    os_name = {"Linux": "linux", "macOS": "darwin", "Windows": "windows"}[runner_os]
-    architecture = "arm64" if runner_os == "macOS" else "x86_64"
-    target = {
-        "os": os_name,
-        "architecture": architecture,
-        "abi": "windows-ucrt64" if os_name == "windows" else (
-            "macos-15" if os_name == "darwin" else "gnu-glibc-2.39"
-        ),
-    }
-    extension = ".zip" if runner_os == "Windows" else ".tar.gz"
-    slug = f"{os_name}-{architecture}-{profile}"
-    archive_name = f"cdin-0.2.0-{slug}{extension}"
-    archive = root / f"cdin-installed-product-{runner_os}-{profile}" / archive_name
-    archive.parent.mkdir(parents=True)
-    archive.write_bytes(f"{runner_os}:{profile}".encode("ascii"))
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    (archive.parent / (archive.name + ".sha256")).write_text(
-        f"{digest}  {archive.name}\n", encoding="ascii"
-    )
-    manifest = {
-        "schema_version": 1,
-        "product": "com.cdin.editor",
-        "version": "0.2.0",
-        "source_commit": SOURCE_SHA,
-        "target": target,
-        "profile": profile,
-        "registry_manifest_sha256": "b" * 64,
-        "components": [
-            {"component_id": "backend", "variant": "default", "version": "1.2.1"}
-        ],
-        "archive": {
-            "name": archive.name,
-            "size_bytes": archive.stat().st_size,
-            "sha256": digest,
-        },
-        "workflow": {"run_id": RUN_ID, "run_attempt": RUN_ATTEMPT},
-    }
-    (archive.parent / f"cdin-0.2.0-{slug}.manifest.json").write_text(
-        json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
-    )
+MATRIX = json.dumps([
+    {"target": "linux-x86_64", "profile": "tui"},
+    {"target": "windows-x86_64", "profile": "gui-sdl"},
+])
 
 
 class RollingReleasePreparationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory(prefix="pipeline-rolling-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="pipeline-rolling-test-")
         self.root = Path(self.temporary.name)
-        self.downloaded = self.root / "downloaded"
-        self.output = self.root / "output"
-        self.downloaded.mkdir()
-        for runner_os in ("Linux", "macOS", "Windows"):
-            for profile in ("tui", "gui-sdl"):
-                write_group(self.downloaded, runner_os, profile)
+        self.artifacts = self.root / "downloaded"
+        self.artifacts.mkdir()
+        self.output = self.root / "prepared"
+        self.write_artifact(
+            "cdin-installed-product-linux-x86_64-tui",
+            os_name="linux",
+            architecture="x86_64",
+            abi="gnu-glibc-2.35",
+            profile="tui",
+            payload=b"linux product archive",
+        )
+        self.write_artifact(
+            "cdin-installed-product-windows-x86_64-gui-sdl",
+            os_name="windows",
+            architecture="x86_64",
+            abi="windows-ucrt64",
+            profile="gui-sdl",
+            payload=b"windows product archive",
+        )
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def prepare(self) -> dict:
-        return prepare_rolling_assets(
-            downloaded_root=self.downloaded,
-            output_root=self.output,
-            source_commit=SOURCE_SHA,
-            source_run_id=RUN_ID,
-            source_run_attempt=RUN_ATTEMPT,
+    def write_artifact(
+        self,
+        directory_name: str,
+        *,
+        os_name: str,
+        architecture: str,
+        abi: str,
+        profile: str,
+        payload: bytes,
+        source_sha: str = SOURCE_SHA,
+        version: str = "0.2.0",
+    ) -> Path:
+        directory = self.artifacts / directory_name
+        directory.mkdir()
+        archive_name = f"cdin-{version}-{os_name}-{architecture}-{profile}.tar.gz"
+        digest = hashlib.sha256(payload).hexdigest()
+        (directory / archive_name).write_bytes(payload)
+        (directory / f"{archive_name}.sha256").write_text(
+            f"{digest}  {archive_name}\n", encoding="ascii"
         )
-
-    def test_requires_complete_six_job_product_matrix_and_prepares_manifest(self) -> None:
-        inventory = self.prepare()
-        self.assertEqual(len(inventory["assets"]), 14)
-        manifest_path = self.output / inventory["manifest"]
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(manifest["channel"], "latest")
-        self.assertTrue(manifest["prerelease"])
-        self.assertEqual(manifest["source_commit"], SOURCE_SHA)
-        self.assertEqual(len(manifest["artifacts"]), 6)
-        self.assertEqual(
-            {(row["runner_os"], row["profile"]) for row in manifest["artifacts"]},
-            {
-                (os_name, profile)
-                for os_name in ("Linux", "macOS", "Windows")
-                for profile in ("tui", "gui-sdl")
+        package_manifest = {
+            "schema_version": 1,
+            "product": "com.cdin.editor",
+            "version": version,
+            "source_commit": source_sha,
+            "target": {"os": os_name, "architecture": architecture, "abi": abi},
+            "profile": profile,
+            "registry_version": "0.2.0-dev.2",
+            "registry_manifest_sha256": "b" * 64,
+            "components": [],
+            "environment_contracts": [],
+            "build_dependencies": {},
+            "archive": {
+                "name": archive_name,
+                "size_bytes": len(payload),
+                "sha256": digest,
             },
+        }
+        (directory / f"cdin-{version}.manifest.json").write_text(
+            json.dumps(package_manifest), encoding="utf-8"
         )
-        self.assertTrue((self.output / inventory["checksums"]).is_file())
+        return directory
 
-    def test_rejects_missing_platform_profile_artifact(self) -> None:
-        missing = self.downloaded / "cdin-installed-product-Windows-gui-sdl"
-        for path in missing.iterdir():
-            path.unlink()
-        missing.rmdir()
-        with self.assertRaisesRegex(RollingReleaseError, "matrix is incomplete"):
-            self.prepare()
+    def prepare(
+        self,
+        *,
+        source_sha: str = SOURCE_SHA,
+        matrix: str = MATRIX,
+        source_run_id: str = "123456",
+        source_run_attempt: str = "2",
+    ) -> dict:
+        return prepare_rolling_assets(
+            artifact_root=self.artifacts,
+            output_directory=self.output,
+            repository="cdin-editor/cdin",
+            source_sha=source_sha,
+            source_run_id=source_run_id,
+            source_run_attempt=source_run_attempt,
+            product_prefix="cdin",
+            expected_target_profiles=matrix,
+        )
 
-    def test_rejects_wrong_source_revision_or_run_identity(self) -> None:
-        manifest_path = next(self.downloaded.glob("cdin-installed-product-Linux-tui/*.manifest.json"))
+    def refresh_rolling_manifest(self, result: dict) -> None:
+        manifest_path = self.output / result["manifest_name"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for asset in manifest["assets"]:
+            path = self.output / asset["name"]
+            asset["size_bytes"] = path.stat().st_size
+            asset["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        (self.output / (result["manifest_name"] + ".sha256")).write_text(
+            f"{digest}  {result['manifest_name']}\n", encoding="ascii"
+        )
+
+    def test_prepares_exact_matrix_and_commit_qualified_assets(self) -> None:
+        result = self.prepare()
+        self.assertEqual(result["source_commit"], SOURCE_SHA)
+        self.assertEqual(result["asset_count"], 8)
+        self.assertTrue(result["manifest_name"].endswith(f"{SOURCE_SHA}.json"))
+        self.assertEqual(len(result["packages"]), 2)
+        self.assertEqual(
+            {(item["target"], item["profile"]) for item in result["packages"]},
+            {("linux-x86_64", "tui"), ("windows-x86_64", "gui-sdl")},
+        )
+        for asset in result["assets"]:
+            path = self.output / asset["name"]
+            self.assertEqual(path.stat().st_size, asset["size_bytes"])
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), asset["sha256"])
+            self.assertIn(SOURCE_SHA, path.name)
+        report = verify_rolling_assets(
+            output_directory=self.output,
+            manifest_name=result["manifest_name"],
+            source_sha=SOURCE_SHA,
+            repository="cdin-editor/cdin",
+            expected_target_profiles=MATRIX,
+        )
+        self.assertEqual(report["source_commit"], SOURCE_SHA)
+        self.assertEqual(report["asset_count"], 8)
+
+    def test_rejects_zero_or_nonpositive_workflow_run_identity(self) -> None:
+        with self.assertRaisesRegex(RollingReleaseError, "positive decimal integers"):
+            self.prepare(source_run_id="0")
+        with self.assertRaisesRegex(RollingReleaseError, "positive decimal integers"):
+            self.prepare(source_run_attempt="00")
+
+    def test_rejects_artifact_built_from_another_commit(self) -> None:
+        directory = next(self.artifacts.iterdir())
+        manifest_path = next(directory.glob("*.manifest.json"))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["source_commit"] = "c" * 40
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        with self.assertRaisesRegex(RollingReleaseError, "source commit mismatch"):
+        with self.assertRaisesRegex(RollingReleaseError, "expected"):
             self.prepare()
 
-    def test_rejects_corrupt_archive_checksum(self) -> None:
-        archive = next(self.downloaded.glob("cdin-installed-product-Linux-tui/*.tar.gz"))
-        archive.write_bytes(b"tampered")
-        with self.assertRaisesRegex(RollingReleaseError, "byte size mismatch|SHA-256 mismatch"):
+    def test_rejects_missing_native_target_profile(self) -> None:
+        directory = next(self.artifacts.glob("cdin-installed-product-windows-*"))
+        for path in directory.iterdir():
+            path.unlink()
+        directory.rmdir()
+        with self.assertRaisesRegex(RollingReleaseError, "expected 2 downloaded artifacts, found 1"):
             self.prepare()
 
-    def test_rejects_symlinked_artifact(self) -> None:
-        group = self.downloaded / "cdin-installed-product-Linux-tui"
-        linked = group / "escape.tar.gz"
-        linked.symlink_to(next(group.glob("*.tar.gz")))
+    def test_rejects_archive_checksum_mismatch(self) -> None:
+        directory = next(self.artifacts.iterdir())
+        sidecar = next(directory.glob("*.sha256"))
+        sidecar.write_text(f"{'0' * 64}  {sidecar.name[:-7]}\n", encoding="ascii")
+        with self.assertRaisesRegex(RollingReleaseError, "checksum sidecar"):
+            self.prepare()
+
+    def test_rejects_duplicate_target_profile(self) -> None:
+        original = next(self.artifacts.iterdir())
+        duplicate = self.artifacts / "duplicate-artifact"
+        duplicate.mkdir()
+        for path in original.iterdir():
+            (duplicate / path.name).write_bytes(path.read_bytes())
+        with self.assertRaisesRegex(RollingReleaseError, "expected 2 downloaded artifacts, found 3"):
+            self.prepare()
+
+    def test_rejects_symlinked_artifact_members(self) -> None:
+        directory = next(self.artifacts.iterdir())
+        archive = next(path for path in directory.iterdir() if path.name.endswith(".tar.gz"))
+        link = directory / "linked.tar.gz"
+        try:
+            link.symlink_to(archive)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink creation is unavailable")
         with self.assertRaisesRegex(RollingReleaseError, "symlink"):
             self.prepare()
 
-    def test_refuses_to_overwrite_a_prepared_candidate_directory(self) -> None:
-        self.prepare()
-        with self.assertRaisesRegex(RollingReleaseError, "output already exists"):
-            self.prepare()
+    def test_verifier_rejects_missing_package_pair_even_when_target_list_is_intact(self) -> None:
+        result = self.prepare()
+        manifest_path = self.output / result["manifest_name"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["packages"].pop()
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(RollingReleaseError, "package inventory is incomplete"):
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
+            )
 
-    def test_remote_verification_requires_exact_digest_and_size_for_all_assets(self) -> None:
-        inventory = self.prepare()
-        remote = [
-            {
-                "name": item["name"],
-                "size": item["size"],
-                "digest": f"sha256:{item['sha256']}",
-            }
-            for item in inventory["assets"]
-        ]
-        verify_remote_assets(inventory, remote)
-        remote[0]["digest"] = "sha256:" + "0" * 64
+    def test_verifier_rejects_checksum_sidecar_that_disagrees_with_archive(self) -> None:
+        result = self.prepare()
+        package = result["packages"][0]
+        sidecar = self.output / package["checksum"]
+        sidecar.write_text(f"{'0' * 64}  {package['archive']['name']}\n", encoding="ascii")
+        self.refresh_rolling_manifest(result)
+        with self.assertRaisesRegex(RollingReleaseError, "checksum sidecar is inconsistent"):
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
+            )
+
+    def test_verifier_rejects_package_manifest_from_another_commit(self) -> None:
+        result = self.prepare()
+        package = result["packages"][0]
+        package_manifest_path = self.output / package["package_manifest"]
+        package_manifest = json.loads(package_manifest_path.read_text(encoding="utf-8"))
+        package_manifest["source_commit"] = "c" * 40
+        package_manifest_path.write_text(json.dumps(package_manifest), encoding="utf-8")
+        self.refresh_rolling_manifest(result)
+        with self.assertRaisesRegex(RollingReleaseError, "provenance/target/profile mismatch"):
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
+            )
+
+    def test_verifier_rejects_modified_prepared_asset(self) -> None:
+        result = self.prepare()
+        asset = self.output / result["assets"][0]["name"]
+        asset.write_bytes(b"tampered")
         with self.assertRaisesRegex(RollingReleaseError, "digest/size mismatch"):
-            verify_remote_assets(inventory, remote)
-
-    def test_latest_guard_rejects_a_delayed_older_successful_run(self) -> None:
-        current = "b" * 40
-        later = "c" * 40
-        ancestry = {
-            (SOURCE_SHA, current): True,
-            (SOURCE_SHA, later): True,
-            (current, later): True,
-        }
-
-        def is_ancestor(parent: str, child: str) -> bool:
-            return parent == child or ancestry.get((parent, child), False)
-
-        self.assertEqual(
-            latest_action(
-                current_latest=current,
-                candidate=SOURCE_SHA,
-                main_head=later,
-                candidate_run_id=RUN_ID,
-                candidate_run_attempt=RUN_ATTEMPT,
-                latest_successful_run_id="43170000002",
-                latest_successful_run_attempt="1",
-                is_ancestor=is_ancestor,
-            ),
-            "stale",
-        )
-        self.assertEqual(
-            latest_action(
-                current_latest=SOURCE_SHA,
-                candidate=SOURCE_SHA,
-                main_head=later,
-                candidate_run_id="43170000002",
-                candidate_run_attempt="1",
-                latest_successful_run_id="43170000002",
-                latest_successful_run_attempt="1",
-                is_ancestor=is_ancestor,
-            ),
-            "already-current",
-        )
-
-    def test_latest_guard_allows_only_the_newest_successful_main_run(self) -> None:
-        current = "a" * 40
-        candidate = "b" * 40
-        main_head = "c" * 40
-        ancestry = {(current, candidate): True, (current, main_head): True, (candidate, main_head): True}
-
-        decision = latest_action(
-            current_latest=current,
-            candidate=candidate,
-            main_head=main_head,
-            candidate_run_id="43170000003",
-            candidate_run_attempt="1",
-            latest_successful_run_id="43170000003",
-            latest_successful_run_attempt="1",
-            is_ancestor=lambda parent, child: parent == child or ancestry.get((parent, child), False),
-        )
-        self.assertEqual(decision, "publish")
-
-    def test_latest_guard_rejects_diverged_candidate(self) -> None:
-        with self.assertRaisesRegex(RollingReleaseError, "not on the same mainline"):
-            latest_action(
-                current_latest="b" * 40,
-                candidate="c" * 40,
-                main_head="d" * 40,
-                candidate_run_id=RUN_ID,
-                candidate_run_attempt=RUN_ATTEMPT,
-                latest_successful_run_id=RUN_ID,
-                latest_successful_run_attempt=RUN_ATTEMPT,
-                is_ancestor=lambda parent, child: parent == child or (parent, child) == ("c" * 40, "d" * 40),
+            verify_rolling_assets(
+                output_directory=self.output,
+                manifest_name=result["manifest_name"],
+                source_sha=SOURCE_SHA,
+                repository="cdin-editor/cdin",
+                expected_target_profiles=MATRIX,
             )
 
 
-
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

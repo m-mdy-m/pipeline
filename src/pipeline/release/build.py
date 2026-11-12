@@ -553,6 +553,33 @@ def assemble_release_assets(
                         }
                     )
 
+        # Project-owned release metadata may be prepared after matrix artifacts
+        # have been downloaded. When target directories exist, include regular
+        # files at the asset root as shared release assets instead of silently
+        # dropping them from the assembled bundle.
+        if target_roots:
+            for entry in sorted(root.iterdir(), key=lambda item: item.name):
+                if entry.is_symlink():
+                    raise BuildReleaseError(
+                        f"Release assets must not contain symlinks: {entry.relative_to(root)}"
+                    )
+                if not entry.is_file():
+                    continue
+                # SHA256SUMS and its sidecar/temporary forms are generated
+                # verification metadata, never project-owned release assets.
+                if entry.name == "SHA256SUMS" or entry.name.startswith("SHA256SUMS."):
+                    continue
+                # Basename collisions are handled by the common normalization
+                # pass below, which gives target and shared assets stable prefixes.
+                records.append(
+                    {
+                        "source": entry,
+                        "target": "shared",
+                        "name": entry.name,
+                        "generated": False,
+                    }
+                )
+
         if not records:
             raise BuildReleaseError("No release artifacts were downloaded")
 
