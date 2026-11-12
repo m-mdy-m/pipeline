@@ -185,6 +185,75 @@ PYTHONPATH=.pipeline/src python -m pipeline.release.target_cli run \
   --target-os android --architecture arm64 --abi arm64-v8a --platform mobile
 ~~~
 
+## Publish a rolling product prerelease
+
+Use `.github/workflows/rolling-release.yml` when a project needs one mutable development channel for the newest fully verified `main` build. This is deliberately separate from both the immutable SemVer build-release workflow and the source-only contributor workflow.
+
+The reusable workflow accepts the ID and SHA of an already successful `push` workflow run, downloads that run's artifacts, verifies that every required target/profile pair was built from the exact commit, and prepares a commit-qualified asset set. It then:
+
+1. Serializes publication per repository with a non-cancelling concurrency group.
+2. Confirms the source workflow run is successful, belongs to the caller repository, is a push to `main`, and identifies the supplied 40-character SHA.
+3. Rechecks that the candidate is still the current `main` commit before promotion.
+4. Verifies each package archive against its sidecar and package manifest, including source SHA, target, profile, size and SHA-256.
+5. Uploads commit-qualified assets without replacing an existing same-name asset; a retry reuses an existing asset only when its size and SHA-256 are identical.
+6. Uploads the commit-bound rolling manifest after the package assets and verifies the GitHub Release API inventory.
+7. Advances the fixed `latest` tag, marks the Release as a prerelease, and only then removes older assets from this workflow's own `rolling-<product>-` namespace.
+
+The manifest is the authoritative inventory. Consumers must use only the assets it lists, not every file that may temporarily be visible while a candidate is being staged. The asset filenames include the full source commit SHA so a retry is idempotent and a different commit never overwrites those bytes. If a newer commit reaches `main` while an older run is waiting or uploading, the older run stops before moving the tag. If publication is interrupted, rerunning the same source run verifies and reuses matching assets rather than replacing them.
+
+A caller should trigger the reusable workflow only after its complete CI/native matrix has succeeded. For example, this is the shape of a product-owned `workflow_run` orchestrator (the target list and artifact pattern belong to the caller):
+
+~~~yaml
+name: Rolling product prerelease
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  rolling-release:
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    permissions:
+      actions: read
+      contents: write
+    uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@<pipeline-commit>
+    with:
+      pipeline-ref: <same-pipeline-commit>
+      repository: ${{ github.repository }}
+      source-run-id: ${{ github.event.workflow_run.id }}
+      source-branch: ${{ github.event.workflow_run.head_branch }}
+      source-sha: ${{ github.event.workflow_run.head_sha }}
+      artifact-pattern: "cdin-installed-product-*"
+      product-prefix: cdin
+      expected-target-profiles: >-
+        [{"target":"linux-x86_64","profile":"tui"},
+         {"target":"linux-x86_64","profile":"gui-sdl"},
+         {"target":"linux-arm64","profile":"tui"},
+         {"target":"linux-arm64","profile":"gui-sdl"},
+         {"target":"macos-x86_64","profile":"tui"},
+         {"target":"macos-x86_64","profile":"gui-sdl"},
+         {"target":"macos-arm64","profile":"tui"},
+         {"target":"macos-arm64","profile":"gui-sdl"},
+         {"target":"windows-x86_64","profile":"tui"},
+         {"target":"windows-x86_64","profile":"gui-sdl"}]
+    secrets:
+      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
+~~~
+
+The caller must grant `actions: read` for retrieving the successful run's artifacts and `contents: write` for the reusable publication job. The supplied release token must be permitted to create/update the `latest` ref and manage Release assets; do not put it in logs. Keep `pipeline-ref` and `pipeline-ref` input aligned to the same exact Pipeline commit, not a floating helper version.
+
+The rolling channel always uses Git tag `latest` and `prerelease: true`. It is not GitHub's stable `/releases/latest` selector, not a SemVer component version, and must never be used as a Registry pin. Versioned product and component releases remain immutable tags such as `v1.1.1` or `v1.1.1-rc.1`.
+
 ## Try a build release without publishing
 
 Set `dry-run: true` when calling the workflow. It still validates the tag or development version, runs tests and builds, collects assets, and creates checksums. It skips the GitHub Release publishing job.
