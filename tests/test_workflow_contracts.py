@@ -30,6 +30,7 @@ NEW_WORKFLOWS = (
     "benchmark-regression.yml",
     "oci-publish.yml",
     "oci-smoke-publish.yml",
+    "rolling-release.yml",
 )
 NEW_ACTIONS = (
     "python-quality",
