@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -122,7 +123,12 @@ def prepare_rolling_assets(
         raise RollingReleaseError("source SHA must be a full lowercase 40-character commit SHA")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise RollingReleaseError("repository must use owner/name form")
-    if not source_run_id.isdigit() or not source_run_attempt.isdigit():
+    if (
+        not source_run_id.isdigit()
+        or int(source_run_id) <= 0
+        or not source_run_attempt.isdigit()
+        or int(source_run_attempt) <= 0
+    ):
         raise RollingReleaseError("workflow run ID and attempt must be positive decimal integers")
     product = _safe_component(product_prefix, "product prefix")
     expected = _expected_pairs(expected_target_profiles)
@@ -215,7 +221,7 @@ def prepare_rolling_assets(
         ):
             if destination.exists() or destination.is_symlink():
                 raise RollingReleaseError(f"duplicate rolling asset destination: {destination.name}")
-        archive_destination.write_bytes(archive.read_bytes())
+        shutil.copyfile(archive, archive_destination)
         checksum_destination.write_text(f"{digest}  {archive_name}\n", encoding="ascii")
         manifest_destination.write_bytes(manifest_bytes)
 
