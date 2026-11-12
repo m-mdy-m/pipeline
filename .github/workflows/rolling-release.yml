@@ -171,6 +171,8 @@ jobs:
           PRODUCT_PREFIX: ${{ inputs.product-prefix }}
           ASSET_DIRECTORY: rolling-assets
           MANIFEST_NAME: ${{ steps.prepare.outputs.manifest_name }}
+          EXPECTED_TARGET_PROFILES: ${{ inputs.expected-target-profiles }}
+          PYTHONPATH: .pipeline/src
         run: bash .pipeline/scripts/publish_rolling_release.sh
 
       - name: Retain the exact promotion inventory for audit
