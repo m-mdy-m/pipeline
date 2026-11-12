@@ -15,6 +15,10 @@ on:
         description: "Successful caller workflow run whose artifacts are being promoted"
         required: true
         type: string
+      source-workflow-path:
+        description: "Exact caller workflow file path that produced the successful artifacts"
+        required: true
+        type: string
       source-branch:
         description: "Source branch; the product rolling channel only accepts main"
         required: true
@@ -78,6 +82,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ inputs.repository }}
           SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          SOURCE_WORKFLOW_PATH: ${{ inputs.source-workflow-path }}
           SOURCE_BRANCH: ${{ inputs.source-branch }}
           SOURCE_SHA: ${{ inputs.source-sha }}
         shell: bash
@@ -91,8 +96,10 @@ jobs:
             --arg repository "$REPOSITORY" \
             --arg sha "$SOURCE_SHA" \
             --arg branch "$SOURCE_BRANCH" \
+            --arg workflow "$SOURCE_WORKFLOW_PATH" \
             '(.event == "push") and
              (.conclusion == "success") and
+             (.path == $workflow) and
              (.head_branch == $branch) and
              (.head_sha == $sha) and
              (.repository.full_name == $repository)' \
