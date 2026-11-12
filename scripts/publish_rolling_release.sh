@@ -225,7 +225,7 @@ gh api --method PATCH "repos/$REPOSITORY/releases/$release_id" \
   -F draft=false > "$release_file"
 
 jq -e '(.draft == false) and (.prerelease == true) and (.tag_name == "latest")' "$release_file" >/dev/null
-resolved_ref="$(gh api "repos/$REPOSITORY/commits/latest" --jq .sha)"
+resolved_ref="$(gh api "repos/$REPOSITORY/git/ref/tags/latest" --jq '.object.sha')"
 if [[ "$resolved_ref" != "$SOURCE_SHA" ]]; then
   echo "latest tag changed unexpectedly during Release publication." >&2
   exit 1
