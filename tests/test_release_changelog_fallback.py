@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from pipeline.release.changelog import extract_dry_run_section
-from pipeline.release.errors import ReleaseError
+from pipeline.release.errors import EmptyUnreleasedError, ReleaseError
 
 
 class ExtractDryRunSectionTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class ExtractDryRunSectionTests(unittest.TestCase):
         self.assertNotIn("A released feature.", result)
 
     def test_empty_unreleased_without_versioned_section_still_fails(self) -> None:
-        with self.assertRaisesRegex(ReleaseError, "Unreleased section.*empty"):
+        with self.assertRaisesRegex(EmptyUnreleasedError, "Unreleased section.*empty"):
             extract_dry_run_section("# Changelog\n\n## [Unreleased]\n", "CHANGELOG.md")
 
     def test_duplicate_unreleased_sections_still_fail_closed(self) -> None:
