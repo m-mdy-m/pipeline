@@ -81,7 +81,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         assert_main = self.publisher.index("assert_fresh_main", self.publisher.index("# Recheck immediately"))
         ref_update = self.publisher.index('gh api --method PATCH "repos/$REPOSITORY/git/refs/tags/latest"', assert_main)
         self.assertLess(assert_main, ref_update)
-        self.assertIn('resolved_ref="$(gh api "repos/$REPOSITORY/commits/latest" --jq .sha)"', self.publisher)
+        self.assertIn('repos/$REPOSITORY/git/ref/tags/latest', self.publisher)
 
 
 if __name__ == "__main__":
