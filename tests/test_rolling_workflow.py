@@ -74,7 +74,7 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
 
     def test_manifest_is_uploaded_after_packages_and_before_promotion(self) -> None:
         package_upload = self.publisher.index("# Upload commit-qualified package assets")
-        manifest_upload = self.publisher.index("# Upload the authoritative manifest last")
+        manifest_upload = self.publisher.index("# Refresh once after package upload, then add the authoritative manifest last.")
         remote_verify = self.publisher.index("# Compare every local package/checksum/manifest byte")
         promote = self.publisher.index("# Recheck source identity immediately before moving the mutable tag")
         self.assertLess(package_upload, manifest_upload)
