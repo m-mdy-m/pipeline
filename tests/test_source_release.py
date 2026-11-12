@@ -83,7 +83,7 @@ class ChangelogTests(unittest.TestCase):
             "## [1.1.0] - 2026-10-30\n\n### Fixed\n- Latest fix\n",
         )
 
-    def test_dry_run_does_not_hide_duplicate_or_empty_unreleased_sections(self) -> None:
+    def test_dry_run_rejects_duplicate_unreleased_and_falls_back_when_empty(self) -> None:
         duplicate = """## [Unreleased]
 - one
 ## [Unreleased]
@@ -96,8 +96,10 @@ class ChangelogTests(unittest.TestCase):
 """
         with self.assertRaises(sr.ReleaseError):
             sr.extract_dry_run_section(duplicate, "CHANGELOG.md")
-        with self.assertRaises(sr.ReleaseError):
-            sr.extract_dry_run_section(empty, "CHANGELOG.md")
+        self.assertEqual(
+            sr.extract_dry_run_section(empty, "CHANGELOG.md"),
+            "## [1.1.0]\n- released\n",
+        )
 
     def test_dry_run_requires_a_release_or_unreleased_section(self) -> None:
         with self.assertRaises(sr.ReleaseError):

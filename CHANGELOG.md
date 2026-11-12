@@ -1,11 +1,16 @@
 # Changelog
 
-All notable changes to Papyrxis Workspace are documented here.
+All notable changes to Pipeline are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Fixed
+
+- Allow branch source-release dry-runs to use the newest populated version section when `Unreleased` is empty.
+- Keep populated `Unreleased` notes authoritative and reject malformed or duplicate sections.
 
 ## [1.2.1] - 2026-11-12
 
