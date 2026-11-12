@@ -250,7 +250,7 @@ jobs:
       release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
 ~~~
 
-The caller must grant `actions: read` for retrieving the successful run's artifacts and `contents: write` for the reusable publication job. The supplied release token must be permitted to create/update the `latest` ref and manage Release assets; do not put it in logs. Keep `pipeline-ref` and `pipeline-ref` input aligned to the same exact Pipeline commit, not a floating helper version.
+The caller must grant `actions: read` for retrieving the successful run's artifacts and `contents: write` for the reusable publication job. The supplied release token must be permitted to create/update the `latest` ref and manage Release assets; do not put it in logs. Keep the called workflow's `@<pipeline-commit>` ref and its `pipeline-ref` input aligned to the same exact Pipeline commit, not a floating helper version.
 
 The rolling channel always uses Git tag `latest` and `prerelease: true`. It is not GitHub's stable `/releases/latest` selector, not a SemVer component version, and must never be used as a Registry pin. Versioned product and component releases remain immutable tags such as `v1.1.1` or `v1.1.1-rc.1`.
 
