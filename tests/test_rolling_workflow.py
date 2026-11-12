@@ -64,7 +64,19 @@ class RollingReleaseWorkflowContracts(unittest.TestCase):
         self.assertIn('line.split("\\t")', self.publisher)
         self.assertIn("immutable rolling asset collision", self.publisher)
         self.assertIn('remote_digest != f"sha256:{expected_digest}"', self.publisher)
+        self.assertNotIn("gh release upload", self.publisher)
+        self.assertIn("upload_release_asset", self.publisher)
+        self.assertIn("upload_url?name=$encoded_name", self.publisher)
         self.assertIn("expected_size", self.publisher)
+
+    def test_draft_release_retry_resolves_by_id_and_uploads_to_the_release_upload_url(self) -> None:
+        self.assertIn('releases?per_page=100', self.publisher)
+        self.assertIn('gh api "repos/$REPOSITORY/releases/$RELEASE_ID"', self.publisher)
+        self.assertNotIn('releases/tags/latest', self.publisher)
+        self.assertIn(".tag_name == \"latest\"", self.publisher)
+        self.assertIn(".prerelease == true", self.publisher)
+        self.assertIn("https://uploads.github.com/repos/$REPOSITORY/releases/$RELEASE_ID/assets", self.publisher)
+        self.assertIn("upload_url_template", self.publisher)
 
     def test_remote_asset_names_are_parsed_without_shell_or_jq_interpolation(self) -> None:
         self.assertNotIn("select(.name ==", self.publisher)
