@@ -155,6 +155,7 @@ jobs:
           PACKAGE_NAME: ${{ inputs.package-name }}
           PACKAGE_VERSION_INPUT: ${{ inputs.version }}
           COMPONENT_ID: ${{ inputs.component-id }}
+          DRY_RUN: ${{ inputs.dry-run }}
           BUILD_MATRIX_JSON: ${{ inputs.build-matrix-json }}
           SOURCE_REF_INPUT: ${{ inputs.source-ref }}
         run: |
@@ -169,6 +170,9 @@ jobs:
           package_version="$PACKAGE_VERSION_INPUT"
           if [[ -z "$package_version" && "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
             package_version="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "$package_version" && "$DRY_RUN" == "true" && "$GITHUB_REF_TYPE" == "branch" ]]; then
+            package_version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
           fi
           [[ -n "$package_version" ]] || {
             echo "version is required for non-tag and dry-run builds" >&2
@@ -262,6 +266,7 @@ jobs:
           PIPELINE_TARGET_OS: ${{ matrix.target_os }}
           PIPELINE_TARGET_ARCH: ${{ matrix.architecture }}
           PIPELINE_TARGET_ABI: ${{ matrix.abi }}
+          PIPELINE_DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
           bash -euo pipefail -c "$COMMAND"
@@ -275,6 +280,7 @@ jobs:
           PIPELINE_TARGET_OS: ${{ matrix.target_os }}
           PIPELINE_TARGET_ARCH: ${{ matrix.architecture }}
           PIPELINE_TARGET_ABI: ${{ matrix.abi }}
+          PIPELINE_DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
           bash -euo pipefail -c "$COMMAND"
