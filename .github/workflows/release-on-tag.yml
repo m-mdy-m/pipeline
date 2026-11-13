@@ -2,6 +2,8 @@ name: Release on version tag
 
 on:
   push:
+    branches:
+      - "**"
     tags:
       - "v*"
 
@@ -18,6 +20,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       pipeline-ref: ${{ github.ref_name }}
+      dry-run: ${{ github.ref_type != 'tag' }}
       test-command: PYTHONPATH=src python -m pipeline.providers.github task check --json
       build-command: |
         set -euo pipefail
