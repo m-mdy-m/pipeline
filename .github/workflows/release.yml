@@ -675,6 +675,7 @@ jobs:
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           PIPELINE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           PIPELINE_SOURCE_SHA: ${{ needs.prepare.outputs.source_commit }}
+          PIPELINE_DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
           bash -euo pipefail -c "$ASSET_PREPARATION_COMMAND"
