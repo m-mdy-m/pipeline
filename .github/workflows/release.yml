@@ -412,6 +412,7 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PIPELINE_DRY_RUN: ${{ inputs.dry-run }}
           IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
@@ -425,6 +426,7 @@ jobs:
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.build_command || inputs.build-command }}
           PIPELINE_RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PIPELINE_DRY_RUN: ${{ inputs.dry-run }}
           IDIOS_MOBILE_SERVER_URL: ${{ secrets['mobile-server-url'] }}
           RELEASE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: python -m pipeline.release.target_cli run --target "$TARGET_ID" --stage build --working-directory "$RELEASE_WORKING_DIRECTORY"
