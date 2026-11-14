@@ -326,7 +326,8 @@ class StructuralContractTests(unittest.TestCase):
         for name in ("Run tests (MSYS2)", "Run tests"):
             step = next(item for item in build_steps if item.get("name") == name)
             with self.subTest(step=name):
-                self.assertEqual(step.get("env", {}).get("GITHUB_TOKEN"), "${{ github.token }}")
+                self.assertEqual(step.get("env", {}).get("GH_TOKEN"), "${{ github.token }}")
+                self.assertNotIn("GITHUB_TOKEN", step.get("env", {}))
 
     def test_local_uses_references_exist_and_reusable_workflows_are_callable(self) -> None:
         for path in [*sorted(WORKFLOWS.glob("*.yml")), *sorted(ACTIONS.glob("*/action.yml"))]:
