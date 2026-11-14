@@ -379,6 +379,7 @@ jobs:
       # Keep runner-context checks in step-level if conditions. The runner context
       # is not available while evaluating the shell property. The shared src runner
       # streams child stdout/stderr as it is produced and writes a stage report.
+      # Only these read-only release test steps receive the token for immutable API checks.
       - name: Run tests (MSYS2)
         id: test_msys2
         if: runner.os == 'Windows' && matrix.msys2_msystem != null
