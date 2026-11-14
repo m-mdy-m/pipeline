@@ -320,6 +320,14 @@ class StructuralContractTests(unittest.TestCase):
             "${{ github.workspace }}/release-assets",
         )
 
+    def test_release_target_tests_receive_the_scoped_github_api_token(self) -> None:
+        workflow = load_yaml(WORKFLOWS / "release.yml")
+        build_steps = workflow["jobs"]["build"]["steps"]
+        for name in ("Run tests (MSYS2)", "Run tests"):
+            step = next(item for item in build_steps if item.get("name") == name)
+            with self.subTest(step=name):
+                self.assertEqual(step.get("env", {}).get("GITHUB_TOKEN"), "${{ github.token }}")
+
     def test_local_uses_references_exist_and_reusable_workflows_are_callable(self) -> None:
         for path in [*sorted(WORKFLOWS.glob("*.yml")), *sorted(ACTIONS.glob("*/action.yml"))]:
             for target in re.findall(r"uses:\s*(\./\.github/[^\s#]+)", path.read_text(encoding="utf-8")):
