@@ -384,6 +384,7 @@ jobs:
         if: runner.os == 'Windows' && matrix.msys2_msystem != null
         shell: msys2 {0}
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PYTHONPATH: .pipeline/src
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
           TARGET_ID: ${{ matrix.id }}
@@ -396,6 +397,7 @@ jobs:
         if: runner.os != 'Windows' || matrix.msys2_msystem == null
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PYTHONPATH: .pipeline/src
           TARGET_ID: ${{ matrix.id }}
           PIPELINE_RELEASE_COMMAND: ${{ matrix.test_command || inputs.test-command }}
