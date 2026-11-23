@@ -209,7 +209,7 @@ jobs:
 
       - name: Set up ORAS
         if: inputs.dry-run != true
-        uses: oras-project/setup-oras@v2.0.3
+        uses: oras-project/setup-oras@v2.0.4
         with:
           version: ${{ inputs.oras-version }}
 
